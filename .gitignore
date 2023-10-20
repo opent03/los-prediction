@@ -1,0 +1,3 @@
+*.gzip
+*.csv.gz
+*summary*.txt
