@@ -33,16 +33,21 @@ import evaluation
 
 
 class ML_models():
-    def __init__(self,data_icu,k_fold,model_type,concat,oversampling):
+    def __init__(self,data_icu,k_fold,model_type,concat,oversampling, data_dir=None):
         self.data_icu=data_icu
         self.k_fold=k_fold
         self.model_type=model_type
         self.concat=concat
         self.oversampling=oversampling
+        self.data_dir = data_dir
         self.loss=evaluation.Loss('cpu',True,True,True,True,True,True,True,True,True,True,True)
         self.ml_train()
     def create_kfolds(self):
-        labels=pd.read_csv('./data/csv/labels.csv', header=0)
+        if(self.data_dir==None):
+            data_loc = './data/csv/labels.csv'
+        else:
+            data_loc = self.data_dir + '/data/csv/labels.csv'
+        labels=pd.read_csv(data_loc, header=0)
         
         if (self.k_fold==0):
             k_fold=5
@@ -79,8 +84,11 @@ class ML_models():
 
     def ml_train(self):
         k_hids=self.create_kfolds()
-        
-        labels=pd.read_csv('./data/csv/labels.csv', header=0)
+        if(self.data_dir==None):
+            data_loc = '.'
+        else:
+            data_loc = self.data_dir
+        labels=pd.read_csv(data_loc + '/data/csv/labels.csv', header=0)
         for i in range(self.k_fold):
             print("==================={0:2d} FOLD=====================".format(i))
             test_hids=k_hids[i]
@@ -91,7 +99,7 @@ class ML_models():
             
             concat_cols=[]
             if(self.concat):
-                dyn=pd.read_csv('./data/csv/'+str(train_hids[0])+'/dynamic.csv',header=[0,1])
+                dyn=pd.read_csv(data_loc+'/data/csv/'+str(train_hids[0])+'/dynamic.csv',header=[0,1])
                 dyn.columns=dyn.columns.droplevel(0)
                 cols=dyn.columns
                 time=dyn.shape[0]
@@ -183,6 +191,11 @@ class ML_models():
         y_df=pd.DataFrame()   
         features=[]
         #print(ids)
+        if(self.data_dir==None):
+            data_loc = '.'
+        else:
+            data_loc = self.data_dir
+
         for sample in ids:
             if self.data_icu:
                 y=labels[labels['stay_id']==sample]['label']
@@ -190,7 +203,7 @@ class ML_models():
                 y=labels[labels['hadm_id']==sample]['label']
             
             #print(sample)
-            dyn=pd.read_csv('./data/csv/'+str(sample)+'/dynamic.csv',header=[0,1])
+            dyn=pd.read_csv(data_loc + '/data/csv/'+str(sample)+'/dynamic.csv',header=[0,1])
             
             if self.concat:
                 dyn.columns=dyn.columns.droplevel(0)
@@ -234,11 +247,11 @@ class ML_models():
 #             print(dyn.shape)
 #             print(dyn_df.shape)
 #             print(dyn_df.head())
-            stat=pd.read_csv('./data/csv/'+str(sample)+'/static.csv',header=[0,1])
+            stat=pd.read_csv(data_loc+'/data/csv/'+str(sample)+'/static.csv',header=[0,1])
             stat=stat['COND']
 #             print(stat.shape)
 #             print(stat.head())
-            demo=pd.read_csv('./data/csv/'+str(sample)+'/demo.csv',header=0)
+            demo=pd.read_csv(data_loc+'/data/csv/'+str(sample)+'/demo.csv',header=0)
 #             print(demo.shape)
 #             print(demo.head())
             if X_df.empty:
@@ -257,7 +270,6 @@ class ML_models():
         return X_df ,y_df
     
     def save_output(self,labels,prob,logits):
-        
         output_df=pd.DataFrame()
         output_df['Labels']=labels.values
         output_df['Prob']=prob
