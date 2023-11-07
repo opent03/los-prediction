@@ -4,8 +4,8 @@ Jinja2==2.11.2
 matplotlib==3.2.2
 numpy==1.18.5
 pandas==1.0.5
-scikit_learn==1.0.2
-torch==1.6.0
+#scikit_learn==1.0.2
+#torch==1.6.0
 tqdm==4.47.0
 captum
 imblearn
