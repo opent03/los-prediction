@@ -1,3 +1,6 @@
 *.gzip
 *.csv.gz
 *summary*.txt
+/datasets/*
+/pipeline/data/*
+*.tar.gz

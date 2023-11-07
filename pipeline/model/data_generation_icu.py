@@ -61,8 +61,8 @@ class Generator():
         data['outtime'] = pd.to_datetime(data['outtime'])
         data['los']=pd.to_timedelta(data['outtime']-data['intime'],unit='h')
         data['los']=data['los'].astype(str)
-        data[['days', 'dummy','hours']] = data['los'].str.split(' ', -1, expand=True)
-        data[['hours','min','sec']] = data['hours'].str.split(':', -1, expand=True)
+        data[['days', 'dummy','hours']] = data['los'].str.split(pat=' ', n=-1, expand=True)
+        data[['hours','min','sec']] = data['hours'].str.split(pat=':', n=-1, expand=True)
         data['los']=pd.to_numeric(data['days'])*24+pd.to_numeric(data['hours'])
         data=data.drop(columns=['days', 'dummy','hours','min','sec'])
         data=data[data['los']>0]
@@ -117,8 +117,8 @@ class Generator():
         final=pd.DataFrame()
         for chart in tqdm(pd.read_csv("./data/features/preproc_chart_icu.csv.gz", compression='gzip', header=0, index_col=None,chunksize=chunksize)):
             chart=chart[chart['stay_id'].isin(self.data['stay_id'])]
-            chart[['start_days', 'dummy','start_hours']] = chart['event_time_from_admit'].str.split(' ', -1, expand=True)
-            chart[['start_hours','min','sec']] = chart['start_hours'].str.split(':', -1, expand=True)
+            chart[['start_days', 'dummy','start_hours']] = chart['event_time_from_admit'].str.split(pat=' ', n=-1, expand=True)
+            chart[['start_hours','min','sec']] = chart['start_hours'].str.split(pat=':', n=-1, expand=True)
             chart['start_time']=pd.to_numeric(chart['start_days'])*24+pd.to_numeric(chart['start_hours'])
             chart=chart.drop(columns=['start_days', 'dummy','start_hours','min','sec','event_time_from_admit'])
             chart=chart[chart['start_time']>=0]
@@ -133,19 +133,19 @@ class Generator():
             if final.empty:
                 final=chart
             else:
-                final=final.append(chart, ignore_index=True)
-        
+                #final=final.append(chart, ignore_index=True)
+                final = pd.concat([final, chart], ignore_index=True)
         self.chart=final
         
         
         
     def generate_meds(self):
         meds=pd.read_csv("./data/features/preproc_med_icu.csv.gz", compression='gzip', header=0, index_col=None)
-        meds[['start_days', 'dummy','start_hours']] = meds['start_hours_from_admit'].str.split(' ', -1, expand=True)
-        meds[['start_hours','min','sec']] = meds['start_hours'].str.split(':', -1, expand=True)
+        meds[['start_days', 'dummy','start_hours']] = meds['start_hours_from_admit'].str.split(pat=' ', n=-1, expand=True)
+        meds[['start_hours','min','sec']] = meds['start_hours'].str.split(pat=':', n=-1, expand=True)
         meds['start_time']=pd.to_numeric(meds['start_days'])*24+pd.to_numeric(meds['start_hours'])
-        meds[['start_days', 'dummy','start_hours']] = meds['stop_hours_from_admit'].str.split(' ', -1, expand=True)
-        meds[['start_hours','min','sec']] = meds['start_hours'].str.split(':', -1, expand=True)
+        meds[['start_days', 'dummy','start_hours']] = meds['stop_hours_from_admit'].str.split(pat=' ', n=-1, expand=True)
+        meds[['start_hours','min','sec']] = meds['start_hours'].str.split(pat=':', n=-1, expand=True)
         meds['stop_time']=pd.to_numeric(meds['start_days'])*24+pd.to_numeric(meds['start_hours'])
         meds=meds.drop(columns=['start_days', 'dummy','start_hours','min','sec'])
         #####Sanity check
@@ -309,8 +309,8 @@ class Generator():
                 if final_meds.empty:
                     final_meds=sub_meds
                 else:
-                    final_meds=final_meds.append(sub_meds)
-            
+                    #final_meds=final_meds.append(sub_meds)
+                    final_meds = pd.concat([final_meds, sub_meds])
             ###PROC
              if(self.feat_proc):
                 sub_proc=self.proc[(self.proc['start_time']>=i) & (self.proc['start_time']<i+bucket)].groupby(['stay_id','itemid']).agg({'subject_id':'max'})
@@ -340,7 +340,8 @@ class Generator():
                 if final_chart.empty:
                     final_chart=sub_chart
                 else:    
-                    final_chart=final_chart.append(sub_chart)
+                    #final_chart=final_chart.append(sub_chart)
+                    final_chart = pd.concat([final_chart, sub_chart])
             
              t=t+1
         print("bucket",bucket)
