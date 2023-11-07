@@ -4,3 +4,4 @@
 /datasets/*
 /pipeline/data/*
 *.tar.gz
+pipeline/saved_models/*
