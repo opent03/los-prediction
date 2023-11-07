@@ -42,6 +42,8 @@ import warnings
 warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore')
 
+from tqdm import tqdm
+
 #save_path = "saved_models/model.tar"
 if not os.path.exists("saved_models"):
     os.makedirs("saved_models")
@@ -160,7 +162,7 @@ class DL_models():
                 self.net.train()
             
                 print("======= EPOCH {:.1f} ========".format(epoch))
-                for nbatch in range(int(len(train_hids)/(args.batch_size))):
+                for nbatch in tqdm(range(int(len(train_hids)/(args.batch_size)))):
                     meds,chart,out,proc,lab,stat_train,demo_train,Y_train=self.getXY(train_hids[nbatch*args.batch_size:(nbatch+1)*args.batch_size],labels)
 #                     print(chart.shape)
 #                     print(meds.shape)
