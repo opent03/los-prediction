@@ -32,6 +32,7 @@ class BEHRT_models():
         for patient, group in tqdm.tqdm(labs_input.groupby(self.id)):
             tokenized_src.append([])
             tokenized_src[idx].append(vocab["token2idx"]['CLS'])
+    
             for row in cond_input[cond_input[self.id] == patient].itertuples(index=None):
                 for key, value in row._asdict().items():
                     if value == '1':
@@ -39,7 +40,7 @@ class BEHRT_models():
             tokenized_src[idx].append(vocab["token2idx"]['SEP'])
             for lab in group.itertuples(index=None):
                 for col in lab:
-                    if not isinstance(col, float):
+                    if not isinstance(col, float) and not pd.isnull(col):
                         tokenized_src[idx].append(vocab["token2idx"][col])
                 tokenized_src[idx].append(vocab["token2idx"]['SEP'])
             tokenized_src[idx][-1] = vocab["token2idx"]['SEP']
@@ -65,14 +66,19 @@ class BEHRT_models():
         labs_list = []
         demo_list = []
         cond_list = []
-        labels =  pd.read_csv('./data/csv/'+'labels.csv')
+        labels =  pd.read_csv('/datasets/MIMIC-IV/data/csv/'+'labels.csv')
         first = True
-        #labels = labels.iloc[:1, :]
+        labels = labels[0:5000]
+        df_filter = pd.read_csv('/h/chloexq/los-prediction/pipeline/dynamic_item_dict_short_263.csv')
+        id_filter = [int(i) for i in df_filter['itemid'].values]
+
         print("STARTING READING FILES.")
         for hadm in tqdm.tqdm(labels.itertuples(), total = labels.shape[0]):
-            labs = pd.read_csv('./data/csv/' + str(hadm[1]) + '/dynamic.csv')
-            demo = pd.read_csv('./data/csv/' + str(hadm[1]) + '/demo.csv')
-            cond = pd.read_csv('./data/csv/' + str(hadm[1]) + '/static.csv')
+            labs = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm[1]) + '/dynamic.csv')
+            labs = labs.loc[:, labs.iloc[0, :].isin(id_filter)].copy()
+ 
+            demo = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm[1]) + '/demo.csv')
+            cond = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm[1]) + '/static.csv')
             if first:
                 condVocab_l = cond.iloc[0: , :].values.tolist()[0]
                 first = False
@@ -100,9 +106,8 @@ class BEHRT_models():
 
         labs_list = labs_list.rename(columns={labs_list.columns.to_list()[-1]: self.id})
         demo_list = demo_list.rename(columns={demo_list.columns.to_list()[-1]: self.id})
-
+        
         labs_list.replace(0, np.nan, inplace=True)
-
         '''    for col in labs_list.columns.to_list()[:-1]:
                 if labs_list[col].nunique() < 2:
                     labs_list = labs_list.drop(columns=col)
@@ -113,20 +118,31 @@ class BEHRT_models():
             if labs_list[col].nunique() > 1 :
                 for i in range(len(pd.qcut(labs_list[col], 4, duplicates='drop', retbins=True)[1]) - 1):
                     labels_l.append(str(col) + "_" + str(i))
-                labs_codes.update(labels_l)
                 labs_list[col] = pd.qcut(labs_list[col], 4, labels=labels_l, duplicates='drop')
+                #nan_index = labs_list[labs_list[col].isna()][col].index
+                #if len(nan_index) > 0:
+                #    labs_list[col] = labs_list[col].cat.add_categories("nan")
+                #    labs_list.loc[nan_index, col] = "nan"
+                #    labels_l.append("nan")
+                labs_codes.update(labels_l)
             elif labs_list[col].nunique() == 1 :
                 labs_list.loc[labs_list[labs_list[col] > 0][col].index, col] = "dyn_" + str(col)
                 labs_codes.add("dyn_" + str(col))
+                #labs_list.loc[labs_list[labs_list[col].isna()][col].index, col] =  "nan"
+                #labs_codes.update(["dyn_" + str(col), "nan"])
+            #else:
+            #    labs_list.loc[:, col] = "nan"
+            #    labs_codes.add("nan")
+
         ethVocab = {}
         insVocab = {}
         condVocab = {'token2idx': {}, 'idx2token': {0: 'PAD', 1: 'CLS', 2: 'SEP'}}
-        with open('./data/dict/ethVocab', 'rb') as fp:
+        with open('/datasets/MIMIC-IV/data/dict/ethVocab', 'rb') as fp:
             ethVocab_l = pickle.load(fp)
             for i in range(len(ethVocab_l)):
                 ethVocab[ethVocab_l[i]] = i
 
-        with open('./data/dict/insVocab', 'rb') as fp:
+        with open('/datasets/MIMIC-IV/data/dict/insVocab', 'rb') as fp:
             insVocab_l = pickle.load(fp)
             for i in range(len(insVocab_l)):
                 insVocab[insVocab_l[i]] = i
@@ -134,7 +150,7 @@ class BEHRT_models():
         for v in condVocab_l:
             condVocab['idx2token'][max(condVocab['idx2token']) + 1] = v
         genderVocab = {'M': 0, 'F': 1}
-
+        
         for new_code in labs_codes:
             condVocab['idx2token'][max(condVocab['idx2token']) + 1] = new_code
 

@@ -58,7 +58,7 @@ import evaluation
 
 
 class DL_models():
-    def __init__(self,data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag,model_type,k_fold,oversampling,model_name,train):
+    def __init__(self,data_dir,data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag,model_type,k_fold,oversampling,model_name,train):
         self.save_path="saved_models/"+model_name+".tar"
         self.data_icu=data_icu
         self.diag_flag,self.proc_flag,self.out_flag,self.chart_flag,self.med_flag,self.lab_flag=diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag
@@ -66,6 +66,7 @@ class DL_models():
         self.k_fold=k_fold
         self.model_type=model_type
         self.oversampling=oversampling
+        self.data_dir = data_dir
         
         if train: self.cond_vocab_size,self.proc_vocab_size,self.med_vocab_size,self.out_vocab_size,self.chart_vocab_size,self.lab_vocab_size,self.eth_vocab,self.gender_vocab,self.age_vocab,self.ins_vocab=model_utils.init(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag)
         else:
@@ -92,7 +93,7 @@ class DL_models():
         
         
     def create_kfolds(self):
-        labels=pd.read_csv('./data/csv/labels.csv', header=0)
+        labels=pd.read_csv(self.data_dir + '/data/csv/labels.csv', header=0)
         
         if (self.k_fold==0):
             k_fold=5
@@ -130,7 +131,7 @@ class DL_models():
     def dl_train(self):
         k_hids=self.create_kfolds()
         
-        labels=pd.read_csv('./data/csv/labels.csv', header=0)
+        labels=pd.read_csv(self.data_dir + '/data/csv/labels.csv', header=0)
         for i in range(self.k_fold):
             self.create_model(self.model_type)
             print("[ MODEL CREATED ]")
@@ -142,9 +143,8 @@ class DL_models():
             train_ids=list(set([0,1,2,3,4])-set([i]))
             train_hids=[]
             for j in train_ids:
-                train_hids.extend(k_hids[j])  
-            #print(test_hids)
-            #train_hids=train_hids[0:200]
+                train_hids.extend(k_hids[j])
+            train_hids=train_hids[0:5000]
             val_hids=random.sample(train_hids,int(len(train_hids)*0.1))
             #print(val_hids)
             train_hids=list(set(train_hids)-set(val_hids))
@@ -160,23 +160,16 @@ class DL_models():
                 self.net.train()
             
                 print("======= EPOCH {:.1f} ========".format(epoch))
+                #for nbatch in range(0, len(train_hids), args.batch_size): 
                 for nbatch in range(int(len(train_hids)/(args.batch_size))):
+                    #meds,chart,out,proc,lab,stat_train,demo_train,Y_train=self.getXY(train_hids[nbatch:min(nbatch+args.batch_size, len(train_hids))], labels)
                     meds,chart,out,proc,lab,stat_train,demo_train,Y_train=self.getXY(train_hids[nbatch*args.batch_size:(nbatch+1)*args.batch_size],labels)
-#                     print(chart.shape)
-#                     print(meds.shape)
-#                     print(stat_train.shape)
-#                     print(demo_train.shape)
-#                     print(Y_train.shape)
-                    
                     output,logits = self.train_model(meds,chart,out,proc,lab,stat_train,demo_train,Y_train)
-                    
                     
                     train_prob.extend(output.data.cpu().numpy())
                     train_truth.extend(Y_train.data.cpu().numpy())
                     train_logits.extend(logits.data.cpu().numpy())
-                
-                #print(train_prob)
-                #print(train_truth)
+                    
                 self.loss(torch.tensor(train_prob),torch.tensor(train_truth),torch.tensor(train_logits),False,False)
                 val_loss=self.model_val(val_hids)
                 #print("Updating Model")
@@ -191,26 +184,24 @@ class DL_models():
                     print("No improvement in Validation results")
                     counter=counter+1
             self.model_test(test_hids)
-            self.save_output()
+            #self.save_output()
             
     def model_val(self,val_hids):
         print("======= VALIDATION ========")
-        labels=pd.read_csv('./data/csv/labels.csv', header=0)
-        
+        labels=pd.read_csv(self.data_dir + '/data/csv/labels.csv', header=0)
+        #labels=labels.iloc[:,1]
+        #print(labels)
         val_prob=[]
         val_truth=[]
         val_logits=[]
         self.net.eval()
         #print(len(val_hids))
+        #for nbatch in range(0, len(val_hids), args.batch_size): #range(int(len(train_hids)/(args.batch_size))):
+        #    meds,chart,out,proc,lab,stat_train,demo_train,y=self.getXY(val_hids[nbatch:min(nbatch+args.batch_size, len(val_hids))], labels)
+
         for nbatch in range(int(len(val_hids)/(args.batch_size))):
             meds,chart,out,proc,lab,stat_train,demo_train,y=self.getXY(val_hids[nbatch*args.batch_size:(nbatch+1)*args.batch_size],labels)
-            
-#             print(chart.shape)
-#             print(meds.shape)
-#             print(stat_train.shape)
-#             print(demo_train.shape)
-#             print(y.shape)
-                    
+                            
             output,logits = self.net(meds,chart,out,proc,lab,stat_train,demo_train)
             output=output.squeeze()
             logits=logits.squeeze()
@@ -232,7 +223,8 @@ class DL_models():
     def model_test(self,test_hids):
         
         print("======= TESTING ========")
-        labels=pd.read_csv('./data/csv/labels.csv', header=0)
+        labels=pd.read_csv(self.data_dir + '/data/csv/labels.csv', header=0)
+        
         
         self.prob=[]
         self.eth=[]
@@ -243,6 +235,9 @@ class DL_models():
         self.logits=[]
         self.net.eval()
         #print(len(test_hids))
+        #for nbatch in range(0, len(test_hids), args.batch_size): #range(int(len(train_hids)/(args.batch_size))):
+        #    meds,chart,out,proc,lab,stat,demo,y=self.getXY(test_hids[nbatch:min(nbatch+args.batch_size, len(test_hids))], labels)
+
         for nbatch in range(int(len(test_hids)/(args.batch_size))):
             #print(test_hids[nbatch*args.batch_size:(nbatch+1)*args.batch_size])
             meds,chart,out,proc,lab,stat,demo,y=self.getXY(test_hids[nbatch*args.batch_size:(nbatch+1)*args.batch_size],labels)
@@ -294,13 +289,17 @@ class DL_models():
         stat_df=torch.zeros(size=(1,0))
         demo_df=torch.zeros(size=(1,0))
         y_df=[]
-        #print(ids)
-        dyn=pd.read_csv('./data/csv/'+str(ids[0])+'/dynamic.csv',header=[0,1])
-        keys=dyn.columns.levels[0]
-#         print("keys",keys)
+        dyn = pd.read_csv(self.data_dir + '/data/csv/'+str(ids[0])+'/dynamic.csv',header=[0,1])
+        df_filter = pd.read_csv('/h/chloexq/los-prediction/pipeline/dynamic_item_dict_short_263.csv')
+        id_filter = [str(int(i)) for i in df_filter['itemid'].values]
+        type_filter = np.unique(df_filter['type']).tolist()
+        dyn = dyn.loc[:, dyn.columns.get_level_values(1).isin(id_filter)].copy()
+        #keys=dyn.columns.levels[0]
+        keys = type_filter
+    
         for i in range(len(keys)):
             dyn_df.append(torch.zeros(size=(1,0)))
-#         print(len(dyn_df))
+        
         for sample in ids:
             if self.data_icu:
                 y=labels[labels['stay_id']==sample]['label']
@@ -309,11 +308,10 @@ class DL_models():
             y_df.append(int(y))
 #             print(sample)
 #             print("y_df",y_df)
-            dyn=pd.read_csv('./data/csv/'+str(sample)+'/dynamic.csv',header=[0,1])
+            dyn=pd.read_csv(self.data_dir + '/data/csv/'+str(sample)+'/dynamic.csv',header=[0,1])
+            dyn = dyn.loc[:, dyn.columns.get_level_values(1).isin(id_filter)]
             #print(dyn)
             for key in range(len(keys)):
-#                 print("key",key)
-#                 print("keys[key]",keys[key])
                 dyn_temp=dyn[keys[key]]
                 dyn_temp=dyn_temp.to_numpy()
                 dyn_temp=torch.tensor(dyn_temp)
@@ -330,7 +328,7 @@ class DL_models():
             
 #                 print(dyn_df[key].shape)        
             
-            stat=pd.read_csv('./data/csv/'+str(sample)+'/static.csv',header=[0,1])
+            stat=pd.read_csv(self.data_dir + '/data/csv/'+str(sample)+'/static.csv',header=[0,1])
             stat=stat['COND']
             stat=stat.to_numpy()
             stat=torch.tensor(stat)
@@ -342,7 +340,7 @@ class DL_models():
             else:
                 stat_df=stat
 #             print(stat_df)    
-            demo=pd.read_csv('./data/csv/'+str(sample)+'/demo.csv',header=0)
+            demo=pd.read_csv(self.data_dir + '/data/csv/'+str(sample)+'/demo.csv',header=0)
             #print(demo["gender"])
             demo["gender"].replace(self.gender_vocab, inplace=True)
             #print(demo["gender"])
@@ -372,7 +370,7 @@ class DL_models():
                 proc=dyn_df[k]
             if keys[k]=='LAB':
                 lab=dyn_df[k]
-            
+
         stat_df=torch.tensor(stat_df)
         stat_df=stat_df.type(torch.LongTensor)
         
@@ -400,8 +398,7 @@ class DL_models():
         output,logits = self.net(meds,chart,out,proc,lab,stat_train,demo_train)
         output=output.squeeze()
         logits=logits.squeeze()
-#         print(output.shape)
-#         print(logits.shape)
+
         out_loss=self.loss(output,Y_train,logits,True,False)
         #print("loss",out_loss)
         # calculate the gradients
@@ -497,6 +494,6 @@ class DL_models():
         output_df['age']=self.age
         output_df['insurance']=self.ins
         
-        with open('./data/output/'+'outputDict', 'wb') as fp:
+        with open(self.data_dir + '/data/output/'+'outputDict', 'wb') as fp:
                pickle.dump(output_df, fp)
 
