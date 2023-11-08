@@ -86,87 +86,6 @@ class train_behrt():
             'number_output' : number_output
         }
 
-        train_code = src.values[:train_l]
-        val_code = src.values[train_l:train_l + val_l]
-        test_code = src.values[train_l + val_l:]
-
-        train_age = age.values[:train_l]
-        val_age = age.values[train_l:train_l + val_l]
-        test_age = age.values[train_l + val_l:]
-
-        train_labels = target_data.values[:train_l]
-        val_labels = target_data.values[train_l:train_l + val_l]
-        test_labels = target_data.values[train_l + val_l:]
-
-        train_gender = sex.values[:train_l]
-        val_gender = sex.values[train_l:train_l + val_l]
-        test_gender = sex.values[train_l + val_l:]
-
-        train_ethni = ethni.values[:train_l]
-        val_ethni = ethni.values[train_l:train_l + val_l]
-        test_ethni = ethni.values[train_l + val_l:]
-
-        train_ins = ins.values[:train_l]
-        val_ins = ins.values[train_l:train_l + val_l]
-        test_ins = ins.values[train_l + val_l:]
-
-        train_data = {"code":train_code, "age":train_age, "labels":train_labels, "gender" : train_gender, "ethni" : train_ethni, "ins" : train_ins}
-        val_data = {"code":val_code, "age":val_age, "labels":val_labels, "gender" : val_gender, "ethni" : val_ethni, "ins" : val_ins}
-        test_data = {"code":test_code, "age":test_age, "labels":test_labels, "gender" : test_gender, "ethni" : test_ethni, "ins" : test_ins}
-
-        conf = BertConfig(model_config)
-        behrt = BertForEHRPrediction(conf, model_config['number_output'])
-
-        behrt = behrt.to(train_params['device'])
-
-        #models parameters
-        transformer_vars = [i for i in behrt.parameters()]
-
-        #optimizer
-        optim_behrt = torch.optim.Adam(transformer_vars, lr=3e-5)
-
-        TrainDset = DataLoader(train_data, max_len=train_params['max_len_seq'], code='code')
-        trainload = torch.utils.data.DataLoader(dataset=TrainDset, batch_size=train_params['batch_size'], shuffle=True)
-        ValDset = DataLoader(val_data, max_len=train_params['max_len_seq'], code='code')
-        valload = torch.utils.data.DataLoader(dataset=ValDset, batch_size=train_params['batch_size'], shuffle=True)
-
-        train_loss, val_loss = train(trainload, valload, train_params['device'])
-
-        behrt.load_state_dict(torch.load("./saved_models/checkpoint/behrt", map_location=train_params['device']))
-        print("Loading succesfull")
-
-        TestDset = DataLoader(test_data, max_len=train_params['max_len_seq'], code='code')
-        testload = torch.utils.data.DataLoader(dataset=TestDset, batch_size=train_params['batch_size'], shuffle=True)
-        loss, cost, pred, label = eval(testload, True, train_params['device'])
-
-        labels = pd.read_csv("./data/behrt/behrt_labels.csv", header=None)
-        preds = pd.read_csv("./data/behrt/behrt_preds.csv", header=None)
-
-        labels=labels.drop(0, axis=1)
-        preds=preds.drop(0, axis=1)
-
-        preds = torch.sigmoid(torch.FloatTensor(preds.values))
-        labels = torch.IntTensor(labels.values)
-        print(preds)
-        from torchmetrics import AUROC
-        from torchmetrics import AveragePrecision
-        from torchmetrics import Precision
-        from torchmetrics import Recall
-
-
-        auroc = AUROC(pos_label=1)
-        print(auroc(preds, labels))
-
-        ap = AveragePrecision(pos_label=1)
-        print(ap(preds, labels))
-
-        pres = Precision()
-        print(pres(preds, labels))
-
-        recall = Recall()
-        print(recall(preds, labels))
-
-
         def run_epoch(e, trainload, device):
             tr_loss = 0
             start = time.time()
@@ -268,5 +187,88 @@ class train_behrt():
 
         def save_model(_model_dict, file_name):
             torch.save(_model_dict, file_name)
+
+
+        train_code = src.values[:train_l]
+        val_code = src.values[train_l:train_l + val_l]
+        test_code = src.values[train_l + val_l:]
+
+        train_age = age.values[:train_l]
+        val_age = age.values[train_l:train_l + val_l]
+        test_age = age.values[train_l + val_l:]
+
+        train_labels = target_data.values[:train_l]
+        val_labels = target_data.values[train_l:train_l + val_l]
+        test_labels = target_data.values[train_l + val_l:]
+
+        train_gender = sex.values[:train_l]
+        val_gender = sex.values[train_l:train_l + val_l]
+        test_gender = sex.values[train_l + val_l:]
+
+        train_ethni = ethni.values[:train_l]
+        val_ethni = ethni.values[train_l:train_l + val_l]
+        test_ethni = ethni.values[train_l + val_l:]
+
+        train_ins = ins.values[:train_l]
+        val_ins = ins.values[train_l:train_l + val_l]
+        test_ins = ins.values[train_l + val_l:]
+
+        train_data = {"code":train_code, "age":train_age, "labels":train_labels, "gender" : train_gender, "ethni" : train_ethni, "ins" : train_ins}
+        val_data = {"code":val_code, "age":val_age, "labels":val_labels, "gender" : val_gender, "ethni" : val_ethni, "ins" : val_ins}
+        test_data = {"code":test_code, "age":test_age, "labels":test_labels, "gender" : test_gender, "ethni" : test_ethni, "ins" : test_ins}
+
+        conf = BertConfig(model_config)
+        behrt = BertForEHRPrediction(conf, model_config['number_output'])
+
+        behrt = behrt.to(train_params['device'])
+
+        #models parameters
+        transformer_vars = [i for i in behrt.parameters()]
+
+        #optimizer
+        optim_behrt = torch.optim.Adam(transformer_vars, lr=3e-5)
+
+        TrainDset = DataLoader(train_data, max_len=train_params['max_len_seq'], code='code')
+        trainload = torch.utils.data.DataLoader(dataset=TrainDset, batch_size=train_params['batch_size'], shuffle=True)
+        ValDset = DataLoader(val_data, max_len=train_params['max_len_seq'], code='code')
+        valload = torch.utils.data.DataLoader(dataset=ValDset, batch_size=train_params['batch_size'], shuffle=True)
+
+        train_loss, val_loss = train(trainload, valload, train_params['device'])
+
+        behrt.load_state_dict(torch.load("./saved_models/checkpoint/behrt", map_location=train_params['device']))
+        print("Loading succesfull")
+
+        TestDset = DataLoader(test_data, max_len=train_params['max_len_seq'], code='code')
+        testload = torch.utils.data.DataLoader(dataset=TestDset, batch_size=train_params['batch_size'], shuffle=True)
+        loss, cost, pred, label = eval(testload, True, train_params['device'])
+
+        labels = pd.read_csv("./data/behrt/behrt_labels.csv", header=None)
+        preds = pd.read_csv("./data/behrt/behrt_preds.csv", header=None)
+
+        labels=labels.drop(0, axis=1)
+        preds=preds.drop(0, axis=1)
+
+        preds = torch.sigmoid(torch.FloatTensor(preds.values))
+        labels = torch.IntTensor(labels.values)
+        print(preds)
+        from torchmetrics import AUROC
+        from torchmetrics import AveragePrecision
+        from torchmetrics import Precision
+        from torchmetrics import Recall
+
+
+        auroc = AUROC(pos_label=1)
+        print(auroc(preds, labels))
+
+        ap = AveragePrecision(pos_label=1)
+        print(ap(preds, labels))
+
+        pres = Precision()
+        print(pres(preds, labels))
+
+        recall = Recall()
+        print(recall(preds, labels))
+
+
 
 

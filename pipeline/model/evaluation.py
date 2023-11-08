@@ -95,7 +95,7 @@ class Loss(nn.Module):
         if(self.auroc):
 #             print(labels)
 #             print(prob)
-            fpr, tpr, threshholds = metrics.roc_curve(labels, prob)
+            fpr, tpr, threshholds = metrics.roc_curve(labels, prob, pos_label=1)
             auc = metrics.auc(fpr, tpr)
         if(self.aurocPlot):
             self.auroc_plot(labels, prob)
@@ -169,7 +169,7 @@ class Loss(nn.Module):
         plt.plot([0, 1], [0, 1],'r--')
 
         
-        fpr, tpr, thresh = metrics.roc_curve(label, pred)
+        fpr, tpr, thresh = metrics.roc_curve(label, pred, pos_label=1)
         auc = metrics.roc_auc_score(label, pred)
         plt.plot(fpr, tpr, label=f'Deep Learning Model, auc = {str(round(auc,3))}')
 
