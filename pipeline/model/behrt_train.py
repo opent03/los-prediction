@@ -72,7 +72,7 @@ class train_behrt():
             'hidden_size': 288, # word embedding and seg embedding hidden size
             'seg_vocab_size': 2, # number of vocab for seg embedding
             'age_vocab_size': int(age.max().max() + 1), # number of vocab for age embedding
-            'gender_vocab_size': 2,
+            'gender_vocab_size': 2 + 1, # TODO: +1 for missing values
             'ethni_vocab_size': int(ethni.max().max()) + 1,
             'ins_vocab_size': int(ins.max().max()) + 1,
             'max_position_embedding': train_params['max_len_seq'], # maximum number of tokens

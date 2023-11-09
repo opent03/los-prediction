@@ -45,18 +45,20 @@ class BEHRT_models():
                 tokenized_src[idx].append(vocab["token2idx"]['SEP'])
             tokenized_src[idx][-1] = vocab["token2idx"]['SEP']
             if len(tokenized_src[idx]) >= 512:
-                tokenized_src.pop()
-            else:
-                gender = gender_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 1]]
-                ethnicity = demo_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 2]]
-                insurance = ins_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 3]]
-                age = demo_input[demo_input[self.id] == patient].iloc[0, 0]
-                tokenized_gender.append([gender] * len(tokenized_src[idx]))
-                tokenized_ethni.append([ethnicity] * len(tokenized_src[idx]))
-                tokenized_ins.append([insurance] * len(tokenized_src[idx]))
-                tokenized_age.append([age] * len(tokenized_src[idx]))
-                tokenized_labels.append(labels[labels[self.id] == patient].iloc[0, 1])
-                idx += 1
+                # TODO: Random sample tokens between CLS and SEPs instead of truncation
+                tokenized_src[idx] = tokenized_src[idx][:512]
+                # tokenized_src.pop()
+            #else:
+            gender = gender_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 1]]
+            ethnicity = demo_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 2]]
+            insurance = ins_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 3]]
+            age = demo_input[demo_input[self.id] == patient].iloc[0, 0]
+            tokenized_gender.append([gender] * len(tokenized_src[idx]))
+            tokenized_ethni.append([ethnicity] * len(tokenized_src[idx]))
+            tokenized_ins.append([insurance] * len(tokenized_src[idx]))
+            tokenized_age.append([age] * len(tokenized_src[idx]))
+            tokenized_labels.append(labels[labels[self.id] == patient].iloc[0, 1])
+            idx += 1
 
         print("FINISHED TOKENIZATION. \n")
         return pd.DataFrame(tokenized_src), pd.DataFrame(tokenized_gender), pd.DataFrame(tokenized_ethni), pd.DataFrame(tokenized_ins), pd.DataFrame(tokenized_age), pd.DataFrame(tokenized_labels)
@@ -119,20 +121,10 @@ class BEHRT_models():
                 for i in range(len(pd.qcut(labs_list[col], 4, duplicates='drop', retbins=True)[1]) - 1):
                     labels_l.append(str(col) + "_" + str(i))
                 labs_list[col] = pd.qcut(labs_list[col], 4, labels=labels_l, duplicates='drop')
-                #nan_index = labs_list[labs_list[col].isna()][col].index
-                #if len(nan_index) > 0:
-                #    labs_list[col] = labs_list[col].cat.add_categories("nan")
-                #    labs_list.loc[nan_index, col] = "nan"
-                #    labels_l.append("nan")
                 labs_codes.update(labels_l)
             elif labs_list[col].nunique() == 1 :
                 labs_list.loc[labs_list[labs_list[col] > 0][col].index, col] = "dyn_" + str(col)
                 labs_codes.add("dyn_" + str(col))
-                #labs_list.loc[labs_list[labs_list[col].isna()][col].index, col] =  "nan"
-                #labs_codes.update(["dyn_" + str(col), "nan"])
-            #else:
-            #    labs_list.loc[:, col] = "nan"
-            #    labs_codes.add("nan")
 
         ethVocab = {}
         insVocab = {}
@@ -164,7 +156,7 @@ class BEHRT_models():
 
         tokenized_src, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_age, tokenized_labels = self.tokenize_dataset(
             labs_list, cond_list, demo_list, labels, condVocab, ethVocab, insVocab, genderVocab)
-
+        
         print("FINAL COHORT STATISTICS: ")
         print(str(len(tokenized_labels[tokenized_labels[0] == 1])) + " Positive samples.")
         print(str(len(tokenized_labels[tokenized_labels[0] == 0])) + " Negative samples.\n")
@@ -180,5 +172,15 @@ class BEHRT_models():
         insVocab_reversed = {v: k for k, v in insVocab.items()}
         for i in range(len(insVocab_reversed)):
             print(str(len(tokenized_ins[tokenized_ins[0] == i])) + " " + insVocab_reversed[i] + " samples.")
-
+        
+        # TODO: Fill NaN in dynamic data with PAD token value 
+        # In other dfs such as age, gender etc., fill NaN with a new token to indicate missingness
+        tokenized_src.fillna(0, inplace=True)
+        tokenized_age.fillna(int(tokenized_age.max().max() + 1), inplace=True)
+        # {'M': 0, 'F': 1s}
+        tokenized_gender.fillna(len(genderVocab), inplace=True)
+        # {0: 'BLACK/AFRICAN AMERICAN', 1: 'WHITE', 2: 'UNKNOWN', 3: 'BLACK/CAPE VERDEAN', 4: 'WHITE - BRAZILIAN', 5: 'BLACK/AFRICAN', 6: 'HISPANIC OR LATINO', 7: 'OTHER', 8: 'UNABLE TO OBTAIN', 9: 'HISPANIC/LATINO - SALVADORAN', 10: 'WHITE - OTHER EUROPEAN', 11: 'BLACK/CARIBBEAN ISLAND', 12: 'ASIAN', 13: 'HISPANIC/LATINO - DOMINICAN', 14: 'HISPANIC/LATINO - PUERTO RICAN', 15: 'WHITE - RUSSIAN', 16: 'ASIAN - KOREAN', 17: 'ASIAN - CHINESE', 18: 'PATIENT DECLINED TO ANSWER', 19: 'WHITE - EASTERN EUROPEAN', 20: 'ASIAN - ASIAN INDIAN', 21: 'ASIAN - SOUTH EAST ASIAN', 22: 'NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER', 23: 'AMERICAN INDIAN/ALASKA NATIVE', 24: 'HISPANIC/LATINO - CENTRAL AMERICAN', 25: 'PORTUGUESE', 26: 'HISPANIC/LATINO - GUATEMALAN', 27: 'HISPANIC/LATINO - HONDURAN', 28: 'HISPANIC/LATINO - CUBAN', 29: 'SOUTH AMERICAN', 30: 'MULTIPLE RACE/ETHNICITY', 31: 'HISPANIC/LATINO - COLUMBIAN', 32: 'HISPANIC/LATINO - MEXICAN'}
+        tokenized_ethni.fillna(len(ethVocab), inplace=True)
+        # {0: 'Medicare', 1: 'Other', 2: 'Medicaid'}  
+        tokenized_ins.fillna(len(insVocab), inplace=True)
         return tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels
