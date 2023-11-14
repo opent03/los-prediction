@@ -24,8 +24,11 @@ importlib.reload(behrt_model)
 import behrt_model
 from behrt_model import *
 
+#torch.manual_seed(42)
+#torch.backends.cudnn.deterministic = True
+
 class train_behrt():
-    def __init__(self,src, age, sex, ethni, ins, target_data):
+    def __init__(self,src, age, sex, ethni, ins, target_data, labs, meds, meds_labels, n_meds):
 
         train_l = int(len(src)*0.70)
         val_l = int(len(src)*0.1)
@@ -83,18 +86,26 @@ class train_behrt():
             'intermediate_size': 256, # the size of the "intermediate" layer in the transformer encoder
             'hidden_act': 'gelu', # The non-linear activation function in the encoder and the pooler "gelu", 'relu', 'swish' are supported
             'initializer_range': 0.02, # parameter weight initializer range
-            'number_output' : number_output
+            'number_output' : number_output,
+            'number_meds': n_meds,
         }
 
         def run_epoch(e, trainload, device):
             tr_loss = 0
+            loss_cls_tr = 0
+            loss_dab_tr = 0
             start = time.time()
             behrt.train()
+            if_dab = False
+            dab_w = 1
+            print(if_dab, dab_w)
             for step, batch in enumerate(trainload):
                 optim_behrt.zero_grad()
                 batch = tuple(t for t in batch)
-                input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels = batch
+                input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels, labs_ids, meds_ids, meds_labels = batch
 
+                labs_ids = labs_ids.to(device)
+                meds_ids = meds_ids.to(device)
                 input_ids = input_ids.to(device)
                 age_ids = age_ids.to(device)
                 gender_ids = gender_ids.to(device)
@@ -104,12 +115,24 @@ class train_behrt():
                 segment_ids = segment_ids.to(device)
                 attMask = attMask.to(device)
                 labels = labels.to(device)
+                meds_labels = meds_labels.to(device)
+                logits, logits_meds = behrt(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
+                               attention_mask=attMask, if_dab=if_dab)
 
-                logits = behrt(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
-                               attention_mask=attMask)
+                #logits = behrt(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
+                #               attention_mask=attMask)
 
                 loss_fct = nn.BCEWithLogitsLoss()
                 loss = loss_fct(logits, labels)
+                loss_cls_tr += loss.item()
+                if if_dab:
+                    criterion_dab = nn.BCEWithLogitsLoss()
+                    loss_dab = criterion_dab(logits_meds, meds_labels.float())
+                    loss += dab_w*loss_dab
+                    loss_dab_tr += dab_w*loss_dab.item() 
+
+                # print("Loss and loss dab")
+                # print(loss, loss_dab)
                 loss.backward()
 
                 tr_loss += loss.item()
@@ -118,18 +141,20 @@ class train_behrt():
                 optim_behrt.step()
                 del loss
             cost = time.time() - start
-            return tr_loss, cost
+            return tr_loss, cost, loss_cls_tr, loss_dab_tr
 
 
         def train(trainload, valload, device):
             best_val = math.inf
             for e in range(train_params["epochs"]):
                 print("Epoch n" + str(e))
-                train_loss, train_time_cost = run_epoch(e, trainload, device)
-                val_loss, val_time_cost,pred, label = eval(valload, False, device)
+                train_loss, train_time_cost, loss_cls, loss_dab = run_epoch(e, trainload, device)
+                print('Finished train')
+                val_loss, val_time_cost, pred, label = eval(valload, False, device)
                 train_loss = train_loss / math.ceil((train_params["train_data_len"] / train_params['batch_size']))
                 val_loss = val_loss / math.ceil((train_params["val_data_len"] / train_params['batch_size']))
                 print('TRAIN {}\t{} secs\n'.format(train_loss, train_time_cost))
+                print('TRAIN loss_cls {} loss_dab {}\n'.format(loss_cls, loss_dab))
                 print('EVAL {}\t{} secs\n'.format(val_loss, val_time_cost))
                 if val_loss < best_val:
                     print("** ** * Saving fine - tuned model ** ** * ")
@@ -153,7 +178,7 @@ class train_behrt():
 
             for step, batch in enumerate(_valload):
                 batch = tuple(t for t in batch)
-                input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels = batch
+                input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels, labs_ids, meds_ids, _  = batch
 
                 input_ids = input_ids.to(device)
                 age_ids = age_ids.to(device)
@@ -164,8 +189,10 @@ class train_behrt():
                 segment_ids = segment_ids.to(device)
                 attMask = attMask.to(device)
                 labels = labels.to(device)
+                labs_ids = labs_ids.to(device)
+                meds_ids = meds_ids.to(device)
 
-                logits = behrt(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
+                logits, _ = behrt(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
                                attention_mask=attMask)
 
                 loss_fct = nn.BCEWithLogitsLoss()
@@ -193,6 +220,14 @@ class train_behrt():
         val_code = src.values[train_l:train_l + val_l]
         test_code = src.values[train_l + val_l:]
 
+        train_labs = labs.values[:train_l]
+        val_labs = labs.values[train_l:train_l + val_l]
+        test_labs = labs.values[train_l + val_l:]
+
+        train_meds = meds.values[:train_l]
+        val_meds = meds.values[train_l:train_l + val_l]
+        test_meds = meds.values[train_l + val_l:]
+
         train_age = age.values[:train_l]
         val_age = age.values[train_l:train_l + val_l]
         test_age = age.values[train_l + val_l:]
@@ -213,9 +248,13 @@ class train_behrt():
         val_ins = ins.values[train_l:train_l + val_l]
         test_ins = ins.values[train_l + val_l:]
 
-        train_data = {"code":train_code, "age":train_age, "labels":train_labels, "gender" : train_gender, "ethni" : train_ethni, "ins" : train_ins}
-        val_data = {"code":val_code, "age":val_age, "labels":val_labels, "gender" : val_gender, "ethni" : val_ethni, "ins" : val_ins}
-        test_data = {"code":test_code, "age":test_age, "labels":test_labels, "gender" : test_gender, "ethni" : test_ethni, "ins" : test_ins}
+        train_meds_labels = meds_labels[:train_l]
+        val_meds_labels = meds_labels[train_l:train_l + val_l]
+        test_meds_labels = meds_labels[train_l + val_l:]
+
+        train_data = {"code":train_code, "age":train_age, "labels":train_labels, "gender" : train_gender, "ethni" : train_ethni, "ins" : train_ins, "labs": train_labs, "meds": train_meds, "meds_labels": train_meds_labels, "n_meds": n_meds}
+        val_data = {"code":val_code, "age":val_age, "labels":val_labels, "gender" : val_gender, "ethni" : val_ethni, "ins" : val_ins, "labs": val_labs, "meds": val_meds, "meds_labels": val_meds_labels, "n_meds": n_meds}
+        test_data = {"code":test_code, "age":test_age, "labels":test_labels, "gender" : test_gender, "ethni" : test_ethni, "ins" : test_ins, "labs": test_labs, "meds": test_meds, "meds_labels": test_meds_labels, "n_meds": n_meds}
 
         conf = BertConfig(model_config)
         behrt = BertForEHRPrediction(conf, model_config['number_output'])
@@ -230,6 +269,7 @@ class train_behrt():
 
         TrainDset = DataLoader(train_data, max_len=train_params['max_len_seq'], code='code')
         trainload = torch.utils.data.DataLoader(dataset=TrainDset, batch_size=train_params['batch_size'], shuffle=True)
+
         ValDset = DataLoader(val_data, max_len=train_params['max_len_seq'], code='code')
         valload = torch.utils.data.DataLoader(dataset=ValDset, batch_size=train_params['batch_size'], shuffle=True)
 

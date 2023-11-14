@@ -144,7 +144,7 @@ class DL_models():
             train_hids=[]
             for j in train_ids:
                 train_hids.extend(k_hids[j])
-            train_hids=train_hids[0:5000]
+            train_hids=train_hids[0:50]
             val_hids=random.sample(train_hids,int(len(train_hids)*0.1))
             #print(val_hids)
             train_hids=list(set(train_hids)-set(val_hids))
