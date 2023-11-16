@@ -63,7 +63,7 @@ def create_batches(batch_size,chart_flag):
         return batchDict
 
 
-def init(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag):
+def init(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag, dump_vocab=False):
         condVocabDict={}
         procVocabDict={}
         medVocabDict={}
@@ -75,22 +75,29 @@ def init(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag):
         genderVocabDict={}
         insVocabDict={}
         
+
         ethVocabDict=create_vocab('ethVocab')
-        with open('./data/dict/'+'ethVocabDict', 'wb') as fp:
-            pickle.dump(ethVocabDict, fp)
-            
+        if dump_vocab:
+            with open('./data/dict/'+'ethVocabDict', 'wb') as fp:
+                pickle.dump(ethVocabDict, fp)
+        
         ageVocabDict=create_vocab('ageVocab')
-        with open('./data/dict/'+'ageVocabDict', 'wb') as fp:
-            pickle.dump(ageVocabDict, fp)
+        if dump_vocab:
+            with open('./data/dict/'+'ageVocabDict', 'wb') as fp:
+                pickle.dump(ageVocabDict, fp)
         
         genderVocabDict=gender_vocab()
-        with open('./data/dict/'+'genderVocabDict', 'wb') as fp:
-            pickle.dump(genderVocabDict, fp)
+        if dump_vocab:
+            with open('./data/dict/'+'genderVocabDict', 'wb') as fp:
+                pickle.dump(genderVocabDict, fp)
             
         insVocabDict=create_vocab('insVocab')
-        with open('./data/dict/'+'insVocabDict', 'wb') as fp:
-            pickle.dump(insVocabDict, fp)
-        
+        if dump_vocab:
+            with open('./data/dict/'+'insVocabDict', 'wb') as fp:
+                pickle.dump(insVocabDict, fp)
+
+            
+            
         if diag_flag:
             file='condVocab'
             with open ('./data/dict/'+file, 'rb') as fp:
