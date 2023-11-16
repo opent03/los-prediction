@@ -6,6 +6,8 @@ import os
 import importlib
 import sys
 from pathlib import Path
+from sklearn.preprocessing import LabelEncoder
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 
 class BEHRT_models():
@@ -18,13 +20,19 @@ class BEHRT_models():
         self.diag_flag,self.proc_flag,self.out_flag,self.chart_flag,self.med_flag,self.lab_flag=diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag
         #self.tokenization()
         
-    def tokenize_dataset(self,labs_input, cond_input, demo_input, labels, vocab, demo_vocab, ins_vocab, gender_vocab):
+    def tokenize_dataset(self,labs_input, cond_input, demo_input, labels, vocab, demo_vocab, ins_vocab, gender_vocab, labs_tokens, meds_tokens):
         tokenized_src = []
         tokenized_gender = []
         tokenized_ethni = []
         tokenized_ins = []
         tokenized_age = []
         tokenized_labels = []
+
+        tokenized_labs = []
+        tokenized_meds = []
+
+        meds_labels = []
+
         idx = 0
 
         print("STARTING TOKENIZATION.")
@@ -32,22 +40,48 @@ class BEHRT_models():
         for patient, group in tqdm.tqdm(labs_input.groupby(self.id)):
             tokenized_src.append([])
             tokenized_src[idx].append(vocab["token2idx"]['CLS'])
-    
+            
+            tokenized_labs.append([])
+            tokenized_labs[idx].append(vocab["token2idx"]['CLS'])
+
+            tokenized_meds.append([])
+            tokenized_meds[idx].append(vocab["token2idx"]['CLS'])
+
+            meds_labels.append([])
+
             for row in cond_input[cond_input[self.id] == patient].itertuples(index=None):
                 for key, value in row._asdict().items():
                     if value == '1':
                         tokenized_src[idx].append(vocab["token2idx"][key])
             tokenized_src[idx].append(vocab["token2idx"]['SEP'])
+
             for lab in group.itertuples(index=None):
                 for col in lab:
                     if not isinstance(col, float) and not pd.isnull(col):
                         tokenized_src[idx].append(vocab["token2idx"][col])
+                        if col in labs_tokens:
+                            tokenized_labs[idx].append(vocab["token2idx"][col])
+                        if col in meds_tokens:
+                            tokenized_meds[idx].append(vocab["token2idx"][col])
+                            if col not in meds_labels[idx]:
+                                meds_labels[idx].append(col)
                 tokenized_src[idx].append(vocab["token2idx"]['SEP'])
+                tokenized_labs[idx].append(vocab["token2idx"]['SEP'])
+                tokenized_meds[idx].append(vocab["token2idx"]['SEP'])
+            
             tokenized_src[idx][-1] = vocab["token2idx"]['SEP']
+            tokenized_labs[idx][-1] = vocab["token2idx"]['SEP']
+            tokenized_meds[idx][-1] = vocab["token2idx"]['SEP']
+
             if len(tokenized_src[idx]) >= 512:
                 # TODO: Random sample tokens between CLS and SEPs instead of truncation
                 tokenized_src[idx] = tokenized_src[idx][:512]
+                tokenized_labs[idx] = tokenized_labs[idx][:512]
+                tokenized_meds[idx] = tokenized_meds[idx][:512]
+                meds_labels[idx] = meds_labels[idx][:512]
                 # tokenized_src.pop()
+            if len(meds_labels[idx]) == 0:
+                meds_labels[idx] = ["nan"]
             #else:
             gender = gender_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 1]]
             ethnicity = demo_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 2]]
@@ -61,7 +95,7 @@ class BEHRT_models():
             idx += 1
 
         print("FINISHED TOKENIZATION. \n")
-        return pd.DataFrame(tokenized_src), pd.DataFrame(tokenized_gender), pd.DataFrame(tokenized_ethni), pd.DataFrame(tokenized_ins), pd.DataFrame(tokenized_age), pd.DataFrame(tokenized_labels)
+        return pd.DataFrame(tokenized_src), pd.DataFrame(tokenized_gender), pd.DataFrame(tokenized_ethni), pd.DataFrame(tokenized_ins), pd.DataFrame(tokenized_age), pd.DataFrame(tokenized_labels), pd.DataFrame(tokenized_labs), pd.DataFrame(tokenized_meds), meds_labels
 
 
     def tokenize(self):
@@ -73,12 +107,13 @@ class BEHRT_models():
         labels = labels[0:5000]
         df_filter = pd.read_csv('/h/chloexq/los-prediction/pipeline/dynamic_item_dict_short_263.csv')
         id_filter = [int(i) for i in df_filter['itemid'].values]
-
+        index_chart_only = df_filter[df_filter['type']=='CHART'].index.tolist()
+        index_meds_only = df_filter[df_filter['type']=='MEDS'].index.tolist()
         print("STARTING READING FILES.")
         for hadm in tqdm.tqdm(labels.itertuples(), total = labels.shape[0]):
             labs = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm[1]) + '/dynamic.csv')
             labs = labs.loc[:, labs.iloc[0, :].isin(id_filter)].copy()
- 
+            
             demo = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm[1]) + '/demo.csv')
             cond = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm[1]) + '/static.csv')
             if first:
@@ -101,7 +136,6 @@ class BEHRT_models():
         cond_list = pd.DataFrame(cond_list, columns=condVocab_l + [self.id])
         labs_list = labs_list.rename(columns={labs_list.columns.to_list()[-1]: self.id})
         demo_list = demo_list.rename(columns={demo_list.columns.to_list()[-1]: self.id})
-
         labs_list = pd.DataFrame(labs_list)
         demo_list = pd.DataFrame(demo_list)
         cond_list = pd.DataFrame(cond_list, columns=condVocab_l + [self.id])
@@ -154,9 +188,27 @@ class BEHRT_models():
         labs_list = labs_list.drop(columns=['index'])
         demo_list = demo_list.sort_values(by=self.id)
 
-        tokenized_src, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_age, tokenized_labels = self.tokenize_dataset(
-            labs_list, cond_list, demo_list, labels, condVocab, ethVocab, insVocab, genderVocab)
+        labs_only_list = labs_list.loc[:, index_chart_only]
+        meds_only_list = labs_list.loc[:, index_meds_only]
+
+        labs_tokens = labs_only_list.values.astype(str).flatten()
+        labs_tokens = np.unique(labs_tokens[labs_tokens!="nan"])
+        labs_tokens = labs_tokens.tolist()
+
+        meds_tokens = meds_only_list.values.astype(str).flatten()
+        meds_tokens = np.unique(meds_tokens[meds_tokens!="nan"])
+        meds_tokens = meds_tokens.tolist() + ["nan"]
+        n_meds = len( meds_tokens)
+
+        le = LabelEncoder()
+        le.fit(meds_tokens)
         
+        tokenized_src, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_age, tokenized_labels, tokenized_labs, tokenized_meds, meds_labels = self.tokenize_dataset(
+            labs_list, cond_list, demo_list, labels, condVocab, ethVocab, insVocab, genderVocab, labs_tokens, meds_tokens)
+        
+        for i in range(len(meds_labels)):
+            meds_labels[i] = le.transform(meds_labels[i])
+
         print("FINAL COHORT STATISTICS: ")
         print(str(len(tokenized_labels[tokenized_labels[0] == 1])) + " Positive samples.")
         print(str(len(tokenized_labels[tokenized_labels[0] == 0])) + " Negative samples.\n")
@@ -176,6 +228,9 @@ class BEHRT_models():
         # TODO: Fill NaN in dynamic data with PAD token value 
         # In other dfs such as age, gender etc., fill NaN with a new token to indicate missingness
         tokenized_src.fillna(0, inplace=True)
+        tokenized_labs.fillna(0, inplace=True)
+        tokenized_meds.fillna(0, inplace=True)
+
         tokenized_age.fillna(int(tokenized_age.max().max() + 1), inplace=True)
         # {'M': 0, 'F': 1s}
         tokenized_gender.fillna(len(genderVocab), inplace=True)
@@ -183,4 +238,4 @@ class BEHRT_models():
         tokenized_ethni.fillna(len(ethVocab), inplace=True)
         # {0: 'Medicare', 1: 'Other', 2: 'Medicaid'}  
         tokenized_ins.fillna(len(insVocab), inplace=True)
-        return tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels
+        return tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, tokenized_labs, tokenized_meds, meds_labels, n_meds

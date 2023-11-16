@@ -155,11 +155,16 @@ class DL_models():
             train_ids=list(set([0,1,2,3,4])-set([i]))
             train_hids=[]
             for j in train_ids:
+<<<<<<< HEAD
                 train_hids.extend(k_hids[j])  
             if(self.n_par != None):
                 train_hids=train_hids[0:self.n_par]
             #print(test_hids)
             #train_hids=train_hids[0:200]
+=======
+                train_hids.extend(k_hids[j])
+            train_hids=train_hids[0:50]
+>>>>>>> 1026dea348b5eff04be76230ac45308b33eb24f6
             val_hids=random.sample(train_hids,int(len(train_hids)*0.1))
             #print(val_hids)
             train_hids=list(set(train_hids)-set(val_hids))
