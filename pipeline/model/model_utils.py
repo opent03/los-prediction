@@ -17,8 +17,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 
 
 
-def create_vocab(file):
-    with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+def create_vocab(file, origin='./'):
+    with open (origin+'data/dict/'+file, 'rb') as fp:
         condVocab = pickle.load(fp)
     condVocabDict={}
     condVocabDict[0]=0
@@ -35,16 +35,16 @@ def gender_vocab():
 
     return genderVocabDict
 
-def create_batches(batch_size,chart_flag):
-    with open ('/datasets/MIMIC-IV/data/dict/'+'hadmDic', 'rb') as fp:
+def create_batches(batch_size,chart_flag, origin='./'):
+    with open (origin + 'data/dict/'+'hadmDic', 'rb') as fp:
         hids = pickle.load(fp)
     
     batchDict={}
-    with open ('/datasets/MIMIC-IV/data/dict/'+'dataDic', 'rb') as fp:
+    with open (origin + 'data/dict/'+'dataDic', 'rb') as fp:
         dataDic = pickle.load(fp)
     if chart_flag:
         batchChartDict={}
-        with open ('/datasets/MIMIC-IV/data/dict/'+'dataChartDic', 'rb') as fp:
+        with open (origin + 'data/dict/'+'dataChartDic', 'rb') as fp:
             dataChartDic = pickle.load(fp)
     
     batch_idx=0
@@ -63,7 +63,7 @@ def create_batches(batch_size,chart_flag):
         return batchDict
 
 
-def init(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag):
+def init(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag, origin='./'):
         condVocabDict={}
         procVocabDict={}
         medVocabDict={}
@@ -76,54 +76,52 @@ def init(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag):
         insVocabDict={}
         
         ethVocabDict=create_vocab('ethVocab')
-        # with open('/datasets/MIMIC-IV/data/dict/'+'ethVocabDict', 'wb') as fp:
-        #     pickle.dump(ethVocabDict, fp)
+        with open(origin + 'data/dict/'+'ethVocabDict', 'wb') as fp:
+            pickle.dump(ethVocabDict, fp)
             
         ageVocabDict=create_vocab('ageVocab')
-        # with open('/datasets/MIMIC-IV/data/dict/'+'ageVocabDict', 'wb') as fp:
-        #     pickle.dump(ageVocabDict, fp)
+        with open(origin + 'data/dict/'+'ageVocabDict', 'wb') as fp:
+            pickle.dump(ageVocabDict, fp)
         
         genderVocabDict=gender_vocab()
-        # with open('/datasets/MIMIC-IV/data/dict/'+'genderVocabDict', 'wb') as fp:
-        #     pickle.dump(genderVocabDict, fp)
+        with open(origin + 'data/dict/'+'genderVocabDict', 'wb') as fp:
+            pickle.dump(genderVocabDict, fp)
             
         insVocabDict=create_vocab('insVocab')
-        # with open('/datasets/MIMIC-IV/data/dict/'+'insVocabDict', 'wb') as fp:
-        #     pickle.dump(insVocabDict, fp)
-        df_filter = pd.read_csv('/h/chloexq/los-prediction/pipeline/dynamic_item_dict_short_263.csv')
-        id_filter = [int(i) for i in df_filter['itemid'].values]
-
+        with open(origin + 'data/dict/'+'insVocabDict', 'wb') as fp:
+            pickle.dump(insVocabDict, fp)
+        
         if diag_flag:
             file='condVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 condVocabDict = pickle.load(fp)
         if proc_flag:
             file='procVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 procVocabDict = pickle.load(fp)
         if med_flag:
             file='medVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 medVocabDict = pickle.load(fp)
-                medVocabDict = [i for i in medVocabDict if i in id_filter]
         if out_flag:
             file='outVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 outVocabDict = pickle.load(fp)
         if chart_flag:
             file='chartVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 chartVocabDict = pickle.load(fp)
-                chartVocabDict = [i for i in chartVocabDict if i in id_filter]
+            
         if lab_flag:
             file='labsVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 labVocabDict = pickle.load(fp)
+            
         
         return len(condVocabDict),len(procVocabDict),len(medVocabDict),len(outVocabDict),len(chartVocabDict),len(labVocabDict),ethVocabDict,genderVocabDict,ageVocabDict,insVocabDict
 
     
-def init_read(batch_size,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag):
+def init_read(batch_size,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag, origin='./'):
         condVocabDict={}
         procVocabDict={}
         medVocabDict={}
@@ -135,41 +133,43 @@ def init_read(batch_size,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_fl
         genderVocabDict={}
         insVocabDict={}
 
-        with open('/datasets/MIMIC-IV/dict/'+'ethVocabDict', 'rb') as fp:
+        with open(origin + 'data/dict/'+'ethVocabDict', 'rb') as fp:
             ethVocabDict= pickle.load(fp)
 
-        with open('/datasets/MIMIC-IV/data/dict/'+'ageVocabDict', 'rb') as fp:
+        with open(origin + 'data/dict/'+'ageVocabDict', 'rb') as fp:
             ageVocabDict= pickle.load(fp)
 
-        with open('/datasets/MIMIC-IV/data/dict/'+'genderVocabDict', 'rb') as fp:
+        with open(origin + 'data/dict/'+'genderVocabDict', 'rb') as fp:
             genderVocabDict= pickle.load(fp)
             
-        with open('/datasets/MIMIC-IV/data/dict/'+'insVocabDict', 'rb') as fp:
+        with open(origin + 'data/dict/'+'insVocabDict', 'rb') as fp:
             insVocabDict= pickle.load(fp)
         
         if diag_flag:
             file='condVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 condVocabDict = pickle.load(fp)
         if proc_flag:
             file='procVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 procVocabDict = pickle.load(fp)
         if med_flag:
             file='medVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 medVocabDict = pickle.load(fp)
+                print(medVocabDict)
+                exit()
         if out_flag:
             file='outVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 outVocabDict = pickle.load(fp)
         if chart_flag:
             file='chartVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 chartVocabDict = pickle.load(fp)
         if lab_flag:
             file='labsVocab'
-            with open ('/datasets/MIMIC-IV/data/dict/'+file, 'rb') as fp:
+            with open (origin + 'data/dict/'+file, 'rb') as fp:
                 labVocabDict = pickle.load(fp)
         
 
@@ -177,21 +177,21 @@ def init_read(batch_size,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_fl
 
     
     
-def get_meta():
-    with open ('/datasets/MIMIC-IV/dict/'+'metaDic', 'rb') as fp:
+def get_meta(origin='./'):
+    with open (origin + 'data/dict/'+'metaDic', 'rb') as fp:
         meta = pickle.load(fp)
     if "Lab" in meta.keys():
         return meta['Med'],meta['Cond'],meta['Proc'],0,0,meta['Lab']
     else:
         return meta['Med'],meta['Cond'],meta['Proc'],meta['Out'],meta['Chart'],0
 
-def get_batches():
-    with open ('/datasets/MIMIC-IV/data/dict/'+'batchDict', 'rb') as fp:
+def get_batches(origin='./'):
+    with open (origin + 'data/dict/'+'batchDict', 'rb') as fp:
         batchDict = pickle.load(fp)
     return batchDict
 
 
-def get_batch_data(key,data,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag): 
+def get_batch_data(key,data,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag, origin='./'): 
     conds=[]  
     procs=[]
     meds=[]  
@@ -208,36 +208,36 @@ def get_batch_data(key,data,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab
     gender=[]
     
     
-    with open ('/datasets/MIMIC-IV/data/dict/'+'metaDic', 'rb') as fp:
+    with open (origin + 'data/dict/'+'metaDic', 'rb') as fp:
         meta = pickle.load(fp)
     if diag_flag:
-        with open ('/datasets/MIMIC-IV/data/dict/'+'condVocabDict', 'rb') as fp:
+        with open (origin + 'data/dict/'+'condVocabDict', 'rb') as fp:
             condVocabDict = pickle.load(fp)
     if proc_flag:
-        with open ('/datasets/MIMIC-IV/data/dict/'+'procVocabDict', 'rb') as fp:
+        with open (origin + 'data/dict/'+'procVocabDict', 'rb') as fp:
             procVocabDict = pickle.load(fp)
     if med_flag:
-        with open ('/datasets/MIMIC-IV/data/dict/'+'medVocabDict', 'rb') as fp:
+        with open (origin + 'data/dict/'+'medVocabDict', 'rb') as fp:
             medVocabDict = pickle.load(fp)
     if out_flag:
-        with open ('/datasets/MIMIC-IV/data/dict/'+'outVocabDict', 'rb') as fp:
+        with open (origin + 'data/dict/'+'outVocabDict', 'rb') as fp:
             outVocabDict = pickle.load(fp)
     if lab_flag:
-        with open ('/datasets/MIMIC-IV/data/dict/'+'labVocabDict', 'rb') as fp:
+        with open (origin + 'data/dict/'+'labVocabDict', 'rb') as fp:
             labVocabDict = pickle.load(fp)
    
-    with open ('/datasets/MIMIC-IV/data/dict/'+'ethVocabDict', 'rb') as fp:
+    with open (origin + 'data/dict/'+'ethVocabDict', 'rb') as fp:
         ethVocabDict = pickle.load(fp)
-    with open ('/datasets/MIMIC-IV/data/dict/'+'genderVocabDict', 'rb') as fp:
+    with open (origin + 'data/dict/'+'genderVocabDict', 'rb') as fp:
         genderVocabDict = pickle.load(fp)    
-    with open ('/datasets/MIMIC-IV/data/dict/'+'ageVocabDict', 'rb') as fp:
+    with open (origin + 'data/dict/'+'ageVocabDict', 'rb') as fp:
         ageVocabDict = pickle.load(fp)
         
         
     if chart_flag:
-        with open ('/datasets/MIMIC-IV/data/dict/'+'chartVocabDict', 'rb') as fp:
+        with open (origin + 'data/dict/'+'chartVocabDict', 'rb') as fp:
             chartVocabDict = pickle.load(fp)
-        with open ('/datasets/MIMIC-IV/data/dict/'+'batchChartDict', 'rb') as fp:
+        with open (origin + 'data/dict/'+'batchChartDict', 'rb') as fp:
             batchChartDict = pickle.load(fp)
             batchChartDict=batchChartDict[key]
             
