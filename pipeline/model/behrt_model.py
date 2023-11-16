@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import pytorch_pretrained_bert as Bert
 from torch.utils.data.dataset import Dataset
 import numpy as np
@@ -81,6 +82,7 @@ class BertEmbeddings(nn.Module):
         return torch.tensor(lookup_table)
 
 
+
 class BertModel(Bert.modeling.BertPreTrainedModel):
     def __init__(self, config):
         super(BertModel, self).__init__(config)
@@ -133,19 +135,35 @@ class BertModel(Bert.modeling.BertPreTrainedModel):
         return encoded_layers, pooled_output
 
 
+class CNN(nn.Module):
+    def __init__(self, config):
+        super(CNN, self).__init__()
+        self.config = config 
+        self.layer1 = nn.Conv1d(in_channels=config.hidden_size, out_channels=144, kernel_size=8, stride=3)
+        self.layer2 = nn.Conv1d(in_channels=144, out_channels=144, kernel_size=4, stride=2)
+        self.layer3 = nn.Conv1d(in_channels=144, out_channels=72, kernel_size=4, stride=1)
+        
+    def forward(self, x):
+        x = F.relu(self.layer1(x))
+        x = F.relu(self.layer2(x))
+        return self.layer3(x)
+
+
 class BertForEHRPrediction(Bert.modeling.BertPreTrainedModel):
     def __init__(self, config, num_labels):
         super(BertForEHRPrediction, self).__init__(config)
         self.num_labels = num_labels
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.cnn = CNN(config)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
         self.apply(self.init_bert_weights)
-
+        
     def forward(self, input_ids, age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None, posi_ids=None, attention_mask=None):
         _, pooled_output = self.bert(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
                                      output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
+        cnn_output = self.cnn(pooled_output)
         logits = self.classifier(pooled_output)
 
         return logits
