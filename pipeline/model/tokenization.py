@@ -44,6 +44,7 @@ class BEHRT_models():
                 tokenized_src[idx].append(vocab["token2idx"]['SEP'])
             tokenized_src[idx][-1] = vocab["token2idx"]['SEP']
             if len(tokenized_src[idx]) >= 512:
+                #### To look at 
                 tokenized_src.pop()
             else:
                 gender = gender_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 1]]

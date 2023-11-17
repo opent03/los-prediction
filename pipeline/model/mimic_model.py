@@ -20,6 +20,209 @@ importlib.reload(parameters)
 import parameters
 from parameters import *
 
+sys.path.append('/h/tinbeh/IMV_LSTM/')
+from networks import IMVTensorLSTM
+
+class IMVLSTM(nn.Module):
+    def __init__(self,device,cond_vocab_size,proc_vocab_size,med_vocab_size,out_vocab_size,chart_vocab_size,lab_vocab_size,eth_vocab_size,gender_vocab_size,age_vocab_size,ins_vocab_size,modalities,embed_size,rnn_size,batch_size):
+        super(IMVLSTM, self).__init__()
+        #print('here: ',cond_vocab_size,proc_vocab_size,med_vocab_size,out_vocab_size,chart_vocab_size,lab_vocab_size)
+        self.embed_size=embed_size
+        self.latent_size=args.latent_size
+        self.rnn_size=rnn_size
+        self.cond_vocab_size=cond_vocab_size
+        self.proc_vocab_size=proc_vocab_size
+        self.med_vocab_size=med_vocab_size
+        self.out_vocab_size=out_vocab_size
+        self.chart_vocab_size=chart_vocab_size
+        self.lab_vocab_size=lab_vocab_size
+        
+        self.med_vocab_size, self.chart_vocab_size = 78, 185
+        self.out_vocab_size, self.proc_vocab_size = 0, 0
+        self.modalities = modalities - 2
+
+        self.eth_vocab_size=eth_vocab_size
+        self.gender_vocab_size=gender_vocab_size
+        self.age_vocab_size=age_vocab_size
+        self.ins_vocab_size=ins_vocab_size
+
+        self.batch_size=batch_size
+        self.padding_idx = 0
+        self.device=device
+        #self.modalities=modalities
+        self.build()
+        
+    def build(self):
+            
+        if self.med_vocab_size:
+            self.med=ValEmbed(self.device,self.med_vocab_size,self.embed_size,self.latent_size)                
+        if self.proc_vocab_size:
+            self.proc=CodeEmbed(self.device,self.proc_vocab_size,self.embed_size,self.latent_size)
+        if self.out_vocab_size:
+            self.out=CodeEmbed(self.device,self.out_vocab_size,self.embed_size,self.latent_size)
+        if self.chart_vocab_size:
+            self.chart=ValEmbed(self.device,self.chart_vocab_size,self.embed_size,self.latent_size)
+        if self.lab_vocab_size:
+            self.lab=ValEmbed(self.device,self.lab_vocab_size,self.embed_size,self.latent_size)
+        
+        if self.cond_vocab_size:
+            self.cond=StatEmbed(self.device,self.cond_vocab_size,self.embed_size,self.latent_size)
+        
+        self.ethEmbed=nn.Embedding(self.eth_vocab_size,self.latent_size,self.padding_idx) 
+        self.genderEmbed=nn.Embedding(self.gender_vocab_size,self.latent_size,self.padding_idx) 
+        self.ageEmbed=nn.Embedding(self.age_vocab_size,self.latent_size,self.padding_idx) 
+        self.insEmbed=nn.Embedding(self.ins_vocab_size,self.latent_size,self.padding_idx) 
+       
+        
+        self.embedfc=nn.Linear((self.latent_size*(self.modalities+4)), self.latent_size, True)
+        self.network  = IMVTensorLSTM(self.latent_size, 1, 128, To_cuda=True)
+        
+    def forward(self,meds,chart,out,proc,lab,conds,demo):   
+#         if interpret:
+#             meds,chart,out,proc,lab,conds,demo=X[0],X[1],X[2],X[3],X[4],X[5],X[6]
+        #print(meds[0])
+        #print('there: ',meds.shape,chart.shape,out.shape,proc.shape,lab.shape,conds.shape,demo.shape)
+        out1=torch.zeros(size=(0,0))
+#         print("out",out1.shape)
+#         print(meds.shape)
+#         print(chart.shape)
+#         print(out.shape)
+#         print(proc.shape)
+#         print(lab.shape)
+#         print(conds.shape)
+#         print(demo.shape)
+#         print(conds[:,0:10])
+        #print(demo)
+#         if demo.shape[0]>self.batch_size:
+#             print(demo[0],demo[200],demo[400],demo[600],demo[800])
+        if meds.shape[0]:
+            if meds.shape[0]>self.batch_size:
+                meds=meds[-self.batch_size:]
+            medEmbedded=self.med(meds)
+            
+            if out1.nelement():
+                out1=torch.cat((out1,medEmbedded),2)
+            else:
+                out1=medEmbedded
+            #print(out1.shape)
+            #print(out1.nelement())
+        if proc.shape[0]:
+            if proc.shape[0]>self.batch_size:
+                proc=proc[-self.batch_size:]
+            procEmbedded=self.proc(proc)
+            
+            if out1.nelement():
+                out1=torch.cat((out1,procEmbedded),2)
+            else:
+                out1=procEmbedded
+        if lab.shape[0]:
+            if lab.shape[0]>self.batch_size:
+                lab=lab[-self.batch_size:]
+            labEmbedded=self.lab(lab)
+            #print("lab",labEmbedded.shape)
+            if out1.nelement():
+                out1=torch.cat((out1,labEmbedded),2)
+            else:
+                out1=labEmbedded
+#         print("out",out1.shape)
+        if out.shape[0]:
+            if out.shape[0]>self.batch_size:
+                out=out[-self.batch_size:]
+            outEmbedded=self.out(out)
+            
+            if out1.nelement():
+                out1=torch.cat((out1,outEmbedded),2)
+            else:
+                out1=outEmbedded
+
+            
+        if chart.shape[0]:
+            if chart.shape[0]>self.batch_size:
+                chart=chart[-self.batch_size:]
+            chartEmbed=self.chart(chart)
+#             print("chartEmbed",chartEmbed.shape)
+#             print(chartEmbed[5,:,0:10])
+            if out1.nelement():
+                out1=torch.cat((out1,chartEmbed),2)
+            else:
+                out1=chartEmbed
+        
+#         print("out",out1.shape)
+        if conds.shape[0]>self.batch_size:
+                conds=conds[-self.batch_size:]
+        conds=conds.to(self.device)
+        condEmbed=self.cond(conds)
+        condEmbed=condEmbed.unsqueeze(1)
+        condEmbed=condEmbed.repeat(1,out1.shape[1],1)
+        condEmbed=condEmbed.type(torch.FloatTensor)
+        condEmbed=condEmbed.to(self.device)
+#         print("cond",condEmbed.shape)
+        out1=torch.cat((out1,condEmbed),2)
+#         print("cond",condEmbed.shape)
+        
+#         print("out",out1.shape)
+        if demo.shape[0]>self.batch_size:
+                demo=demo[-self.batch_size:]
+        gender=demo[:,0].to(self.device)
+        gender=gender.type(torch.LongTensor)
+        gender=gender.to(self.device)
+        gender=self.genderEmbed(gender)
+        gender=gender.unsqueeze(1)
+        gender=gender.repeat(1,out1.shape[1],1)
+        gender=gender.type(torch.FloatTensor)
+        gender=gender.to(self.device)
+        out1=torch.cat((out1,gender),2)
+#         print(gender.shape)
+        
+        eth=demo[:,1].to(self.device)
+        eth=eth.type(torch.LongTensor)
+        eth=eth.to(self.device)
+        eth=self.ethEmbed(eth)
+        eth=eth.unsqueeze(1)
+        eth=eth.repeat(1,out1.shape[1],1)
+        eth=eth.type(torch.FloatTensor)
+        eth=eth.to(self.device)
+        out1=torch.cat((out1,eth),2)
+#         print(eth.shape)
+        
+        ins=demo[:,2].to(self.device)
+        ins=ins.type(torch.LongTensor)
+        ins=ins.to(self.device)
+        ins=self.insEmbed(ins)
+        ins=ins.unsqueeze(1)
+        ins=ins.repeat(1,out1.shape[1],1)
+        ins=ins.type(torch.FloatTensor)
+        ins=ins.to(self.device)
+        out1=torch.cat((out1,ins),2)
+#         print(ins.shape)
+        
+        age=demo[:,3].to(self.device)
+        age=age.type(torch.LongTensor)
+        age=age.to(self.device)
+        age=self.ageEmbed(age)
+        age=age.unsqueeze(1)
+        age=age.repeat(1,out1.shape[1],1)
+        age=age.type(torch.FloatTensor)
+        age=age.to(self.device)
+        out1=torch.cat((out1,age),2)
+#         print(age.shape)
+        
+#         print("out",out1.shape)
+        
+        out1=out1.type(torch.FloatTensor)
+        out1=out1.to(self.device)
+        out1=self.embedfc(out1)
+        #print("fcout",out1.shape)
+        
+        
+        output, alphas, betas =self.network(out1)
+        out1 = output.squeeze(1)
+
+        sig = nn.Sigmoid()
+        sigout1=sig(out1)
+        return sigout1,out1
+    
+
 class LSTMBase(nn.Module):
     def __init__(self,device,cond_vocab_size,proc_vocab_size,med_vocab_size,out_vocab_size,chart_vocab_size,lab_vocab_size,eth_vocab_size,gender_vocab_size,age_vocab_size,ins_vocab_size,modalities,embed_size,rnn_size,batch_size):
         super(LSTMBase, self).__init__()
@@ -33,6 +236,11 @@ class LSTMBase(nn.Module):
         self.chart_vocab_size=chart_vocab_size
         self.lab_vocab_size=lab_vocab_size
         
+        #Manual update 
+        self.med_vocab_size, self.chart_vocab_size = 78, 185
+        self.out_vocab_size, self.proc_vocab_size = 0, 0
+        self.modalities = modalities - 2
+        
         self.eth_vocab_size=eth_vocab_size
         self.gender_vocab_size=gender_vocab_size
         self.age_vocab_size=age_vocab_size
@@ -41,7 +249,7 @@ class LSTMBase(nn.Module):
         self.batch_size=batch_size
         self.padding_idx = 0
         self.device=device
-        self.modalities=modalities
+        #self.modalities=modalities
         self.build()
         
     def build(self):

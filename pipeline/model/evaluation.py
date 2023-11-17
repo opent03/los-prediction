@@ -18,7 +18,7 @@ if not os.path.exists("./data/output"):
     os.makedirs("./data/output")
     
 class Loss(nn.Module):
-    def __init__(self,device,acc,ppv,sensi,tnr,npv,auroc,aurocPlot,auprc,auprcPlot,callb,callbPlot):
+    def __init__(self,device,acc,ppv,sensi,tnr,npv,auroc,aurocPlot,auprc,auprcPlot,callb,callbPlot,cohen=True):
         super(Loss, self).__init__()
         self.classify_loss = nn.BCELoss()
         self.classify_loss2 = nn.BCEWithLogitsLoss()
@@ -34,6 +34,7 @@ class Loss(nn.Module):
         self.auprcPlot=auprcPlot
         self.callb=callb
         self.callbPlot=callbPlot
+        self.cohen=cohen
 
     def forward(self, prob, labels,logits, train=True, standalone=False):
         classify_loss='NA' 
@@ -106,6 +107,10 @@ class Loss(nn.Module):
 
             precision, recall, thresholds = metrics.precision_recall_curve(labels, prob)
             apr = metrics.auc(recall, precision)
+            
+            
+        if(self.cohen):
+            cohen_metric = metrics.cohen_kappa_score(labels, prob>0.5)
         
         
         # stati number
@@ -160,6 +165,7 @@ class Loss(nn.Module):
         print("NPV: {:.2f}".format(npv_val))
         print("ECE: {:.2f}".format(ECE))
         print("MCE: {:.2f}".format(MCE))
+        print("Cohen Koppa metric: {:.2f}".format(cohen_metric))
         
         #return [classify_loss, auc,apr,base,accur,prec,recall,spec,npv_val,ECE,MCE]
     

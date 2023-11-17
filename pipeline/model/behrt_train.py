@@ -13,6 +13,7 @@ import sys
 import behrt_model
 from behrt_model import *
 
+from tqdm import tqdm
 
 from pathlib import Path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
@@ -24,8 +25,13 @@ importlib.reload(behrt_model)
 import behrt_model
 from behrt_model import *
 
+from torchmetrics import AUROC
+from torchmetrics import AveragePrecision
+from torchmetrics import Precision
+from torchmetrics import Recall
+
 class train_behrt():
-    def __init__(self,src, age, sex, ethni, ins, target_data):
+    def __init__(self,src, age, sex, ethni, ins, target_data, labs=None, meds=None, meds_labels=None, n_meds=0):
 
         train_l = int(len(src)*0.70)
         val_l = int(len(src)*0.1)
@@ -72,7 +78,7 @@ class train_behrt():
             'hidden_size': 288, # word embedding and seg embedding hidden size
             'seg_vocab_size': 2, # number of vocab for seg embedding
             'age_vocab_size': int(age.max().max() + 1), # number of vocab for age embedding
-            'gender_vocab_size': 2,
+            'gender_vocab_size': 2 + 1, # TODO: +1 for missing values
             'ethni_vocab_size': int(ethni.max().max()) + 1,
             'ins_vocab_size': int(ins.max().max()) + 1,
             'max_position_embedding': train_params['max_len_seq'], # maximum number of tokens
@@ -83,7 +89,8 @@ class train_behrt():
             'intermediate_size': 256, # the size of the "intermediate" layer in the transformer encoder
             'hidden_act': 'gelu', # The non-linear activation function in the encoder and the pooler "gelu", 'relu', 'swish' are supported
             'initializer_range': 0.02, # parameter weight initializer range
-            'number_output' : number_output
+            'number_output' : number_output,
+            'number_meds': n_meds,
         }
 
         train_code = src.values[:train_l]
@@ -117,27 +124,33 @@ class train_behrt():
         conf = BertConfig(model_config)
         behrt = BertForEHRPrediction(conf, model_config['number_output'])
 
+        #print(train_params['device'])
         behrt = behrt.to(train_params['device'])
+        self.behrt = behrt
 
         #models parameters
-        transformer_vars = [i for i in behrt.parameters()]
+        transformer_vars = [i for i in self.behrt.parameters()]
 
         #optimizer
-        optim_behrt = torch.optim.Adam(transformer_vars, lr=3e-5)
+        self.optim_behrt = torch.optim.Adam(transformer_vars, lr=3e-5)
 
         TrainDset = DataLoader(train_data, max_len=train_params['max_len_seq'], code='code')
         trainload = torch.utils.data.DataLoader(dataset=TrainDset, batch_size=train_params['batch_size'], shuffle=True)
         ValDset = DataLoader(val_data, max_len=train_params['max_len_seq'], code='code')
         valload = torch.utils.data.DataLoader(dataset=ValDset, batch_size=train_params['batch_size'], shuffle=True)
-
-        train_loss, val_loss = train(trainload, valload, train_params['device'])
-
-        behrt.load_state_dict(torch.load("./saved_models/checkpoint/behrt", map_location=train_params['device']))
-        print("Loading succesfull")
-
         TestDset = DataLoader(test_data, max_len=train_params['max_len_seq'], code='code')
         testload = torch.utils.data.DataLoader(dataset=TestDset, batch_size=train_params['batch_size'], shuffle=True)
-        loss, cost, pred, label = eval(testload, True, train_params['device'])
+
+        self.trainload, self.valload, self.testload, self.train_params = trainload, valload, testload, train_params
+        
+    def training_phase(self):
+
+        train_loss, val_loss = self.train(self.trainload, self.valload, self.train_params)
+
+        self.behrt.load_state_dict(torch.load("./saved_models/checkpoint/behrt", map_location=self.train_params['device']))
+        print("Loading succesfull")
+
+        loss, cost, pred, label = self.eval(self.testload, True, self.train_params['device'])
 
         labels = pd.read_csv("./data/behrt/behrt_labels.csv", header=None)
         preds = pd.read_csv("./data/behrt/behrt_preds.csv", header=None)
@@ -148,11 +161,6 @@ class train_behrt():
         preds = torch.sigmoid(torch.FloatTensor(preds.values))
         labels = torch.IntTensor(labels.values)
         print(preds)
-        from torchmetrics import AUROC
-        from torchmetrics import AveragePrecision
-        from torchmetrics import Precision
-        from torchmetrics import Recall
-
 
         auroc = AUROC(pos_label=1)
         print(auroc(preds, labels))
@@ -167,106 +175,104 @@ class train_behrt():
         print(recall(preds, labels))
 
 
-        def run_epoch(e, trainload, device):
-            tr_loss = 0
-            start = time.time()
-            behrt.train()
-            for step, batch in enumerate(trainload):
-                optim_behrt.zero_grad()
-                batch = tuple(t for t in batch)
-                input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels = batch
+    def run_epoch(self, e, trainload, device):
+        tr_loss = 0
+        start = time.time()
+        self.behrt.train()
+        for step, batch in enumerate(trainload):
+            self.optim_behrt.zero_grad()
+            batch = tuple(t for t in batch)
+            input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels = batch
 
-                input_ids = input_ids.to(device)
-                age_ids = age_ids.to(device)
-                gender_ids = gender_ids.to(device)
-                ethni_ids = ethni_ids.to(device)
-                ins_ids = ins_ids.to(device)
-                posi_ids = posi_ids.to(device)
-                segment_ids = segment_ids.to(device)
-                attMask = attMask.to(device)
-                labels = labels.to(device)
+            input_ids = input_ids.to(device)
+            age_ids = age_ids.to(device)
+            gender_ids = gender_ids.to(device)
+            ethni_ids = ethni_ids.to(device)
+            ins_ids = ins_ids.to(device)
+            posi_ids = posi_ids.to(device)
+            segment_ids = segment_ids.to(device)
+            attMask = attMask.to(device)
+            labels = labels.to(device)
 
-                logits = behrt(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
-                               attention_mask=attMask)
+            logits = self.behrt(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attention_mask=attMask)
 
-                loss_fct = nn.BCEWithLogitsLoss()
-                loss = loss_fct(logits, labels)
-                loss.backward()
+            loss_fct = nn.BCEWithLogitsLoss()
+            loss = loss_fct(logits, labels)
+            loss.backward()
 
-                tr_loss += loss.item()
-                if step%500 == 0:
-                    print(loss.item())
-                optim_behrt.step()
-                del loss
-            cost = time.time() - start
-            return tr_loss, cost
+            tr_loss += loss.item()
+            if step%500 == 0:
+                print(loss.item())
+            self.optim_behrt.step()
+            del loss
+        cost = time.time() - start
+        return tr_loss, cost
 
+    def train(self, trainload, valload, train_params):
+        
+        best_val = math.inf
+        for e in range(train_params["epochs"]):
+            print('epoch: ', e)
+            train_loss, train_time_cost, loss_cls, loss_dab = self.run_epoch(e, trainload, train_params['device'])
+            print('Finished train')
+            val_loss, val_time_cost, pred, label = self.eval(valload, False, train_params['device'])
+            train_loss = train_loss / math.ceil((train_params["train_data_len"] / train_params['batch_size']))
+            val_loss = val_loss / math.ceil((train_params["val_data_len"] / train_params['batch_size']))
+            print('TRAIN {}\t{} secs\n'.format(train_loss, train_time_cost))
+            print('TRAIN loss_cls {} loss_dab {}\n'.format(loss_cls, loss_dab))
+            print('EVAL {}\t{} secs\n'.format(val_loss, val_time_cost))
+            if val_loss < best_val:
+                print("** ** * Saving fine - tuned model ** ** * ")
+                model_to_save = self.behrt.module if hasattr(self.behrt, 'module') else self.behrt
+                save_model(model_to_save.state_dict(), './saved_models/checkpoint/behrt')
+                best_val = val_loss
+        return train_loss, val_loss
 
-        def train(trainload, valload, device):
-            best_val = math.inf
-            for e in range(train_params["epochs"]):
-                print("Epoch n" + str(e))
-                train_loss, train_time_cost = run_epoch(e, trainload, device)
-                val_loss, val_time_cost,pred, label = eval(valload, False, device)
-                train_loss = train_loss / math.ceil((train_params["train_data_len"] / train_params['batch_size']))
-                val_loss = val_loss / math.ceil((train_params["val_data_len"] / train_params['batch_size']))
-                print('TRAIN {}\t{} secs\n'.format(train_loss, train_time_cost))
-                print('EVAL {}\t{} secs\n'.format(val_loss, val_time_cost))
-                if val_loss < best_val:
-                    print("** ** * Saving fine - tuned model ** ** * ")
-                    model_to_save = behrt.module if hasattr(behrt, 'module') else behrt
-                    save_model(model_to_save.state_dict(), './saved_models/checkpoint/behrt')
-                    best_val = val_loss
-            return train_loss, val_loss
+    def eval(self, _valload, saving, device):
+        tr_loss = 0
+        start = time.time()
+        self.behrt.eval()
+        if saving:
+            with open("./data/behrt/behrt_preds.csv", 'w') as f:
+                f.write('')
+            with open("./data/behrt/behrt_labels.csv", 'w') as f:
+                f.write('')
 
+        for step, batch in enumerate(_valload):
+            batch = tuple(t for t in batch)
+            input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels = batch
 
-        #%%
+            input_ids = input_ids.to(device)
+            age_ids = age_ids.to(device)
+            gender_ids = gender_ids.to(device)
+            ethni_ids = ethni_ids.to(device)
+            ins_ids = ins_ids.to(device)
+            posi_ids = posi_ids.to(device)
+            segment_ids = segment_ids.to(device)
+            attMask = attMask.to(device)
+            labels = labels.to(device)
 
-        def eval(_valload, saving, device):
-            tr_loss = 0
-            start = time.time()
-            behrt.eval()
+            logits = self.behrt(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
+                           attention_mask=attMask)
+
+            loss_fct = nn.BCEWithLogitsLoss()
+            loss = loss_fct(logits, labels)
+
             if saving:
-                with open("./data/behrt/behrt_preds.csv", 'w') as f:
-                    f.write('')
-                with open("./data/behrt/behrt_labels.csv", 'w') as f:
-                    f.write('')
+                with open("./data/behrt/behrt_preds.csv", 'a') as f:
+                    pd.DataFrame(logits.detach().cpu().numpy()).to_csv(f, header=False)
+                with open("./data/behrt/behrt_labels.csv", 'a') as f:
+                    pd.DataFrame(labels.detach().cpu().numpy()).to_csv(f, header=False)
 
-            for step, batch in enumerate(_valload):
-                batch = tuple(t for t in batch)
-                input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels = batch
+            tr_loss += loss.item()
+            del loss
 
-                input_ids = input_ids.to(device)
-                age_ids = age_ids.to(device)
-                gender_ids = gender_ids.to(device)
-                ethni_ids = ethni_ids.to(device)
-                ins_ids = ins_ids.to(device)
-                posi_ids = posi_ids.to(device)
-                segment_ids = segment_ids.to(device)
-                attMask = attMask.to(device)
-                labels = labels.to(device)
+        print("TOTAL LOSS", tr_loss)
 
-                logits = behrt(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
-                               attention_mask=attMask)
+        cost = time.time() - start
+        return tr_loss, cost, logits, labels
 
-                loss_fct = nn.BCEWithLogitsLoss()
-                loss = loss_fct(logits, labels)
-
-                if saving:
-                    with open("./data/behrt/behrt_preds.csv", 'a') as f:
-                        pd.DataFrame(logits.detach().cpu().numpy()).to_csv(f, header=False)
-                    with open("./data/behrt/behrt_labels.csv", 'a') as f:
-                        pd.DataFrame(labels.detach().cpu().numpy()).to_csv(f, header=False)
-
-                tr_loss += loss.item()
-                del loss
-
-            print("TOTAL LOSS", tr_loss)
-
-            cost = time.time() - start
-            return tr_loss, cost, logits, labels
-
-        def save_model(_model_dict, file_name):
-            torch.save(_model_dict, file_name)
+    def save_model(self, _model_dict, file_name):
+        torch.save(_model_dict, file_name)
 
 

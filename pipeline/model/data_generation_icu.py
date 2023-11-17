@@ -727,6 +727,23 @@ class Generator():
             
         with open("./data/dict/metaDic", 'wb') as fp:
             pickle.dump(metaDic, fp)
+
+def create_label(cohort_output, out_name, include_time=24):
+    data=pd.read_csv(f"./data/cohort/{cohort_output}.csv.gz", compression='gzip', header=0, index_col=None)
+    data['intime'] = pd.to_datetime(data['intime'])
+    data['outtime'] = pd.to_datetime(data['outtime'])
+    data['los']=pd.to_timedelta(data['outtime']-data['intime'],unit='h')
+    data['los']=data['los'].astype(str)
+    data[['days', 'dummy','hours']] = data['los'].str.split(' ', -1, expand=True)
+    data[['hours','min','sec']] = data['hours'].str.split(':', -1, expand=True)
+    data['los']=pd.to_numeric(data['days'])*24+pd.to_numeric(data['hours'])
+    data=data.drop(columns=['days', 'dummy','hours','min','sec'])
+    data=data[data['los']>0]
+    data['Age']=data['Age'].astype(int)
+    data = data[(data['los']>=include_time)]
+    hids = data['stay_id'].unique()
+    labels_csv = data.loc[:,['stay_id','label']]
+    labels_csv.to_csv('./data/csv/'+out_name+'.csv',index=False) 
             
             
       

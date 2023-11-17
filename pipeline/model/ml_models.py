@@ -17,7 +17,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import HistGradientBoostingClassifier
-
+from tqdm import tqdm
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.metrics import classification_report
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')

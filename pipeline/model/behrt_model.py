@@ -10,10 +10,12 @@ import pandas as pd
 import pickle
 import tqdm
 import importlib
-
 from pathlib import Path
+#from grad_reverse import AdversarialDiscriminator
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 
+#torch.manual_seed(42)
+#torch.backends.cudnn.deterministic = True
 
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, segment, age
@@ -33,8 +35,8 @@ class BertEmbeddings(nn.Module):
         self.LayerNorm = Bert.modeling.BertLayerNorm(config.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
-    def forward(self, word_ids, age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None,
-                posi_ids=None, age=True):
+    def forward(self, word_ids, labs_ids=None, age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None,
+                posi_ids=None, age=True, if_include_meds=True):
 
         if seg_ids is None:
             seg_ids = torch.zeros_like(word_ids)
@@ -42,7 +44,10 @@ class BertEmbeddings(nn.Module):
             age_ids = torch.zeros_like(word_ids)
         if posi_ids is None:
             posi_ids = torch.zeros_like(word_ids)
-        word_embed = self.word_embeddings(word_ids)
+        if if_include_meds:
+            word_embed = self.word_embeddings(word_ids)
+        else:
+            word_embed = self.word_embeddings(labs_ids) 
         segment_embed = self.segment_embeddings(seg_ids)
         age_embed = self.age_embeddings(age_ids)
         gender_embed = self.gender_embeddings(gender_ids)
@@ -89,9 +94,9 @@ class BertModel(Bert.modeling.BertPreTrainedModel):
         self.pooler = Bert.modeling.BertPooler(config)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None,
+    def forward(self, input_ids, labs_ids=None, age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None,
                 posi_ids=None, attention_mask=None,
-                output_all_encoded_layers=True):
+                output_all_encoded_layers=True, if_include_meds=False):
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         if age_ids is None:
@@ -121,8 +126,8 @@ class BertModel(Bert.modeling.BertPreTrainedModel):
         # effectively the same as removing these entirely.
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-
-        embedding_output = self.embeddings(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids)
+        print('here: ', input_ids.shape, age_ids.shape, gender_ids.shape, ethni_ids.shape, ins_ids.shape, seg_ids.shape, posi_ids.shape)
+        embedding_output = self.embeddings(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, if_include_meds=if_include_meds)
         encoded_layers = self.encoder(embedding_output,
                                       extended_attention_mask,
                                       output_all_encoded_layers=output_all_encoded_layers)
@@ -140,14 +145,20 @@ class BertForEHRPrediction(Bert.modeling.BertPreTrainedModel):
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
+        #self.med_grad_reverse_classifier = AdversarialDiscriminator(config.hidden_size, n_cls=config.number_meds, reverse_grad=True)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None, posi_ids=None, attention_mask=None):
-        _, pooled_output = self.bert(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
-                                     output_all_encoded_layers=False)
+    def forward(self, input_ids=None, labs_ids=None,age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None, posi_ids=None, attention_mask=None, if_dab=False):
+        _, pooled_output = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
+                                     output_all_encoded_layers=False, if_include_meds=True)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
-
+        if if_dab:
+            _, pooled_output_no_meds = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
+                                     output_all_encoded_layers=False, if_include_meds=False)
+            pooled_output_no_meds = self.dropout(pooled_output_no_meds)
+            logits_meds = self.med_grad_reverse_classifier(pooled_output_no_meds)
+            return logits, logits_meds
         return logits
 
 class BertConfig(Bert.modeling.BertConfig):
@@ -170,6 +181,7 @@ class BertConfig(Bert.modeling.BertConfig):
         self.ethni_vocab_size = config.get('ethni_vocab_size')
         self.ins_vocab_size = config.get('ins_vocab_size')
         self.number_output = config.get('number_output')
+        self.number_meds = config.get('number_meds')
 
 class TrainConfig(object):
     def __init__(self, config):
@@ -193,8 +205,12 @@ class DataLoader(Dataset):
         self.gender = dataframe["gender"]
         self.ethni = dataframe["ethni"]
         self.ins = dataframe["ins"]
+        self.labs = dataframe["labs"]
+        self.meds = dataframe["meds"]
+        self.meds_labels = dataframe["meds_labels"]
+        self.n_meds = dataframe["n_meds"]
 
-    def __getitem__(self, index):
+    def __getitem__(self, index, if_dab=False):
         """
         return: age, code, position, segmentation, mask, label
         """
@@ -206,11 +222,16 @@ class DataLoader(Dataset):
         gender = self.gender[index]
         ethni = self.ethni[index]
         ins = self.ins[index]
+        if if_dab:
+            labs = self.labs[index]
+            meds = self.meds[index]
+            meds_labels = nn.functional.one_hot(torch.tensor(self.meds_labels[index]), num_classes=self.n_meds)
+            meds_labels = meds_labels.sum(0)
 
         # mask 0:len(code) to 1, padding to be 0
+        # TODO: Update padding
         mask = np.ones(self.max_len)
         mask[len(code):] = 0
-
 
         # pad age sequence and code sequence
         age = seq_padding(age, self.max_len)
@@ -223,10 +244,17 @@ class DataLoader(Dataset):
         position = position_idx(code)
         segment = index_seg(code)
 
-        return torch.LongTensor(code), torch.LongTensor(age), torch.LongTensor(gender), torch.LongTensor(
-            ethni), torch.LongTensor(ins), \
-               torch.LongTensor(segment), torch.LongTensor(position), \
-               torch.FloatTensor(mask), torch.FloatTensor(label)
+        if if_dab:
+            return torch.LongTensor(code), torch.LongTensor(age), torch.LongTensor(gender), torch.LongTensor(
+                ethni), torch.LongTensor(ins), \
+                torch.LongTensor(segment), torch.LongTensor(position), \
+                torch.FloatTensor(mask), torch.FloatTensor(label), \
+                torch.LongTensor(labs), torch.LongTensor(meds), torch.LongTensor(meds_labels)
+        else:
+            return torch.LongTensor(code), torch.LongTensor(age), torch.LongTensor(gender), torch.LongTensor(
+                ethni), torch.LongTensor(ins), \
+                torch.LongTensor(segment), torch.LongTensor(position), \
+                torch.FloatTensor(mask), torch.FloatTensor(label)
 
     def __len__(self):
         return len(self.code)

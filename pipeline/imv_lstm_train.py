@@ -37,7 +37,6 @@ import argparse
 from torch.autograd import Variable
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
-from IPython import get_ipython
 get_ipython().run_line_magic('matplotlib', 'inline')
 
 import warnings
@@ -58,9 +57,11 @@ from parameters import *
 importlib.reload(evaluation)
 import evaluation
 
+sys.path.append('/h/tinbeh/IMV_LSTM/')
+from networks import IMVTensorLSTM
 
 class DL_models():
-    def __init__(self,data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag,model_type,k_fold,oversampling,model_name,train, data_dir = './'):
+    def __init__(self,data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag,model_type,k_fold,oversampling,model_name,train):
         self.save_path="saved_models/"+model_name+".tar"
         self.data_icu=data_icu
         self.diag_flag,self.proc_flag,self.out_flag,self.chart_flag,self.med_flag,self.lab_flag=diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag
@@ -68,29 +69,19 @@ class DL_models():
         self.k_fold=k_fold
         self.model_type=model_type
         self.oversampling=oversampling
-        self.n_par = 5000
-        self.data_dir = data_dir
-        if train: self.cond_vocab_size,self.proc_vocab_size,self.med_vocab_size,self.out_vocab_size,self.chart_vocab_size,self.lab_vocab_size,self.eth_vocab,self.gender_vocab,self.age_vocab,self.ins_vocab=model_utils.init(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag, origin=self.data_dir)
+        self.data_limit = 5000
+        if train: self.cond_vocab_size,self.proc_vocab_size,self.med_vocab_size,self.out_vocab_size,self.chart_vocab_size,self.lab_vocab_size,self.eth_vocab,self.gender_vocab,self.age_vocab,self.ins_vocab=model_utils.init(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag)
         else:
-            self.cond_vocab_size,self.proc_vocab_size,self.med_vocab_size,self.out_vocab_size,self.chart_vocab_size,self.lab_vocab_size,self.eth_vocab,self.gender_vocab,self.age_vocab,self.ins_vocab=model_utils.init_read(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag, origin=self.data_dir)
+            self.cond_vocab_size,self.proc_vocab_size,self.med_vocab_size,self.out_vocab_size,self.chart_vocab_size,self.lab_vocab_size,self.eth_vocab,self.gender_vocab,self.age_vocab,self.ins_vocab=model_utils.init_read(diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag)
         
         self.eth_vocab_size,self.gender_vocab_size,self.age_vocab_size,self.ins_vocab_size=len(self.eth_vocab),len(self.gender_vocab),len(self.age_vocab),len(self.ins_vocab)
         
-        
-        #update_length 
-        #df_filter = pd.read_csv('./dynamic_item_dict_short_263.csv')
-        
         self.loss=evaluation.Loss('cpu',True,True,True,True,True,True,True,True,True,True,True)
         if torch.cuda.is_available():
-            self.device='cuda:0'
-            self.To_cuda = True 
             print('cuda is available')
+            self.device='cuda:0'
         else:
             self.device='cpu'
-            self.To_cuda = False
-            print('cuda is not available')
-
-            
         if train:
             print("===============MODEL TRAINING===============")
             self.dl_train()
@@ -105,7 +96,7 @@ class DL_models():
         
         
     def create_kfolds(self):
-        labels=pd.read_csv(self.data_dir + '/data/csv/labels.csv', header=0)
+        labels=pd.read_csv('./data/csv/labels.csv', header=0)
         
         if (self.k_fold==0):
             k_fold=5
@@ -143,7 +134,7 @@ class DL_models():
     def dl_train(self):
         k_hids=self.create_kfolds()
         
-        labels=pd.read_csv(self.data_dir + '/data/csv/labels.csv', header=0)
+        labels=pd.read_csv('./data/csv/labels.csv', header=0)
         for i in range(self.k_fold):
             self.create_model(self.model_type)
             print("[ MODEL CREATED ]")
@@ -156,8 +147,6 @@ class DL_models():
             train_hids=[]
             for j in train_ids:
                 train_hids.extend(k_hids[j])  
-            if(self.n_par != None):
-                train_hids=train_hids[0:self.n_par]
             #print(test_hids)
             #train_hids=train_hids[0:200]
             val_hids=random.sample(train_hids,int(len(train_hids)*0.1))
@@ -175,7 +164,7 @@ class DL_models():
                 self.net.train()
             
                 print("======= EPOCH {:.1f} ========".format(epoch))
-                for nbatch in tqdm(range(int(len(train_hids)/(args.batch_size)))):
+                for nbatch in range(int(len(train_hids)/(args.batch_size))):
                     meds,chart,out,proc,lab,stat_train,demo_train,Y_train=self.getXY(train_hids[nbatch*args.batch_size:(nbatch+1)*args.batch_size],labels)
 #                     print(chart.shape)
 #                     print(meds.shape)
@@ -210,7 +199,7 @@ class DL_models():
             
     def model_val(self,val_hids):
         print("======= VALIDATION ========")
-        labels=pd.read_csv(self.data_dir+'/data/csv/labels.csv', header=0)
+        labels=pd.read_csv('./data/csv/labels.csv', header=0)
         
         val_prob=[]
         val_truth=[]
@@ -247,7 +236,7 @@ class DL_models():
     def model_test(self,test_hids):
         
         print("======= TESTING ========")
-        labels=pd.read_csv(self.data_dir + '/data/csv/labels.csv', header=0)
+        labels=pd.read_csv('./data/csv/labels.csv', header=0)
         
         self.prob=[]
         self.eth=[]
@@ -310,14 +299,8 @@ class DL_models():
         demo_df=torch.zeros(size=(1,0))
         y_df=[]
         #print(ids)
-        dyn=pd.read_csv(self.data_dir + '/data/csv/'+str(ids[0])+'/dynamic.csv',header=[0,1])
-        df_filter = pd.read_csv('./dynamic_item_dict_short_263.csv')
-        id_filter = [str(int(i)) for i in df_filter['itemid'].values]
-        type_filter = np.unique(df_filter['type']).tolist()
-        dyn = dyn.loc[:, dyn.columns.get_level_values(1).isin(id_filter)].copy()
-        #keys=dyn.columns.levels[0]
-        keys = type_filter
-        #keys=dyn.columns.levels[0]
+        dyn=pd.read_csv('./data/csv/'+str(ids[0])+'/dynamic.csv',header=[0,1])
+        keys=dyn.columns.levels[0]
 #         print("keys",keys)
         for i in range(len(keys)):
             dyn_df.append(torch.zeros(size=(1,0)))
@@ -330,8 +313,7 @@ class DL_models():
             y_df.append(int(y))
 #             print(sample)
 #             print("y_df",y_df)
-            dyn=pd.read_csv(self.data_dir+'/data/csv/'+str(sample)+'/dynamic.csv',header=[0,1])
-            dyn = dyn.loc[:, dyn.columns.get_level_values(1).isin(id_filter)]
+            dyn=pd.read_csv('./data/csv/'+str(sample)+'/dynamic.csv',header=[0,1])
             #print(dyn)
             for key in range(len(keys)):
 #                 print("key",key)
@@ -352,7 +334,7 @@ class DL_models():
             
 #                 print(dyn_df[key].shape)        
             
-            stat=pd.read_csv(self.data_dir + '/data/csv/'+str(sample)+'/static.csv',header=[0,1])
+            stat=pd.read_csv('./data/csv/'+str(sample)+'/static.csv',header=[0,1])
             stat=stat['COND']
             stat=stat.to_numpy()
             stat=torch.tensor(stat)
@@ -364,7 +346,7 @@ class DL_models():
             else:
                 stat_df=stat
 #             print(stat_df)    
-            demo=pd.read_csv(self.data_dir + '/data/csv/'+str(sample)+'/demo.csv',header=0)
+            demo=pd.read_csv('./data/csv/'+str(sample)+'/demo.csv',header=0)
             #print(demo["gender"])
             demo["gender"].replace(self.gender_vocab, inplace=True)
             #print(demo["gender"])
@@ -485,19 +467,6 @@ class DL_models():
                                self.modalities,
                                embed_size=args.embedding_size,rnn_size=args.rnn_size,
                                batch_size=args.batch_size) 
-        elif model_type=='IMV lstm':
-            self.net = model.IMVLSTM(self.device,
-                               self.cond_vocab_size,
-                               self.proc_vocab_size,
-                               self.med_vocab_size,
-                               self.out_vocab_size,
-                               self.chart_vocab_size,
-                               self.lab_vocab_size,
-                               self.eth_vocab_size,self.gender_vocab_size,self.age_vocab_size,self.ins_vocab_size,
-                               self.modalities,
-                               embed_size=args.embedding_size,rnn_size=args.rnn_size,
-                               batch_size=args.batch_size)
-    
         self.optimizer = optim.Adam(self.net.parameters(), lr=args.lrn_rate)
         #criterion = nn.CrossEntropyLoss()
         self.net.to(self.device)
