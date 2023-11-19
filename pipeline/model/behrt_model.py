@@ -118,7 +118,6 @@ class BertModel(Bert.modeling.BertPreTrainedModel):
         # this attention mask is more simple than the triangular masking of causal attention
         # used in OpenAI GPT, we just need to prepare the broadcast dimension here.
         extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-
         # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
         # masked positions, this operation will create a tensor which is 0.0 for
         # positions we want to attend and -10000.0 for masked positions.
@@ -131,6 +130,7 @@ class BertModel(Bert.modeling.BertPreTrainedModel):
         encoded_layers = self.encoder(embedding_output,
                                       extended_attention_mask,
                                       output_all_encoded_layers=output_all_encoded_layers)
+        # encoded_layers is a list with a single item
         sequence_output = encoded_layers[-1]
         pooled_output = self.pooler(sequence_output)
         if not output_all_encoded_layers:
@@ -230,9 +230,10 @@ class DataLoader(Dataset):
         meds_labels = meds_labels.sum(0)
 
         # mask 0:len(code) to 1, padding to be 0
-        # TODO: Update padding
-        mask = np.ones(self.max_len)
-        mask[len(code):] = 0
+        # TODO: Updated padding
+        #mask = np.ones(self.max_len)
+        #mask[len(code):] = 0
+        mask = (code != 0)*1
 
         # pad age sequence and code sequence
         age = seq_padding(age, self.max_len)

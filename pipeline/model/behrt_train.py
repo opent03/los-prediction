@@ -96,8 +96,8 @@ class train_behrt():
             loss_dab_tr = 0
             start = time.time()
             behrt.train()
-            if_dab = False
-            dab_w = 1
+            if_dab = True
+            dab_w = 10
             print(if_dab, dab_w)
             for step, batch in enumerate(trainload):
                 optim_behrt.zero_grad()
@@ -126,7 +126,9 @@ class train_behrt():
                 loss = loss_fct(logits, labels)
                 loss_cls_tr += loss.item()
                 if if_dab:
-                    criterion_dab = nn.BCEWithLogitsLoss()
+                    criterion_dab = nn.BCEWithLogitsLoss() #nn.KLDivLoss(reduction="batchmean") #nn.BCEWithLogitsLoss()
+                    #logits_meds = nn.functional.log_softmax(logits_meds, dim=1)
+                    #meds_labels = nn.functional.softmax(meds_labels.float(), dim=1)
                     loss_dab = criterion_dab(logits_meds, meds_labels.float())
                     loss += dab_w*loss_dab
                     loss_dab_tr += dab_w*loss_dab.item() 
@@ -146,7 +148,10 @@ class train_behrt():
 
         def train(trainload, valload, device):
             best_val = math.inf
+            early_i = 0 #for early stopping 
             for e in range(train_params["epochs"]):
+                if(early_i==6):
+                    break
                 print("Epoch n" + str(e))
                 train_loss, train_time_cost, loss_cls, loss_dab = run_epoch(e, trainload, device)
                 print('Finished train')
@@ -161,6 +166,9 @@ class train_behrt():
                     model_to_save = behrt.module if hasattr(behrt, 'module') else behrt
                     save_model(model_to_save.state_dict(), './saved_models/checkpoint/behrt')
                     best_val = val_loss
+                    early_i = 0
+                else: 
+                    early_i += 1
             return train_loss, val_loss
 
 

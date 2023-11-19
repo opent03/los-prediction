@@ -106,6 +106,9 @@ import callibrate_output
 importlib.reload(evaluation)
 import evaluation
 
+import numpy as np
+import pandas as pd
+
 def set_seed(seed):
     """set random seed."""
     random.seed(seed)
@@ -124,7 +127,31 @@ med_flag = True
 
 if data_icu:
     token=tokenization.BEHRT_models(data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,False)
-    tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, meds_labels, n_meds =token.tokenize()
+    #tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, meds_labels, n_meds =token.tokenize()
+    '''
+    names = ['tokenized_src', 'tokenized_age', 'tokenized_gender', 'tokenized_ethni', 'tokenized_ins', 'tokenized_labels', 'labs', 'meds']
+    print(n_meds)
+    all_df = [tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds]
+    data2_dir = '/h/chloexq/los-prediction/pipeline/data/features/'
+    for i in range(len(all_df)):
+        df = all_df[i]
+        print(names[i])
+        df.to_csv(data2_dir + names[i]+'_5000.csv')
+    np.save(data2_dir + 'meds_labels_5000.npy', np.array(meds_labels, dtype=object), allow_pickle=True)
+    assert 0
+    '''
+    #data2_dir = '/datasets/MIMIC-IV/'
+    data2_dir = '/h/chloexq/los-prediction/pipeline/data/features/'
+    n_meds = 270
+    names = ['tokenized_src', 'tokenized_age', 'tokenized_gender', 'tokenized_ethni', 'tokenized_ins', 'tokenized_labels', 'labs', 'meds']
+    #meds_labels = np.load(data2_dir + 'data/token/'+'meds_labels_5000.npy', allow_pickle=True)
+    meds_labels = np.load(data2_dir + 'meds_labels_5000.npy', allow_pickle=True)
+    all_df = []
+    for i in range(len(names)):
+        #df = pd.read_csv(data2_dir + 'data/token/'+names[i]+'_5000.csv', index_col=0)
+        df = pd.read_csv(data2_dir + names[i]+'_5000.csv', index_col=0)
+        all_df.append(df)
+    tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds = all_df
 else:
     token=tokenization.BEHRT_models(data_icu,diag_flag,proc_flag,False,False,med_flag,lab_flag)
     tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels=token.tokenize()

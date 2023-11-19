@@ -18,7 +18,6 @@ class BEHRT_models():
         else:
             self.id='hadm_id'
         self.diag_flag,self.proc_flag,self.out_flag,self.chart_flag,self.med_flag,self.lab_flag=diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag
-        #self.tokenization()
         
     def tokenize_dataset(self,labs_input, cond_input, demo_input, labels, vocab, demo_vocab, ins_vocab, gender_vocab, labs_tokens, meds_tokens):
         tokenized_src = []
@@ -93,7 +92,6 @@ class BEHRT_models():
             tokenized_age.append([age] * len(tokenized_src[idx]))
             tokenized_labels.append(labels[labels[self.id] == patient].iloc[0, 1])
             idx += 1
-
         print("FINISHED TOKENIZATION. \n")
         return pd.DataFrame(tokenized_src), pd.DataFrame(tokenized_gender), pd.DataFrame(tokenized_ethni), pd.DataFrame(tokenized_ins), pd.DataFrame(tokenized_age), pd.DataFrame(tokenized_labels), pd.DataFrame(tokenized_labs), pd.DataFrame(tokenized_meds), meds_labels
 
@@ -139,7 +137,6 @@ class BEHRT_models():
         labs_list = pd.DataFrame(labs_list)
         demo_list = pd.DataFrame(demo_list)
         cond_list = pd.DataFrame(cond_list, columns=condVocab_l + [self.id])
-
         labs_list = labs_list.rename(columns={labs_list.columns.to_list()[-1]: self.id})
         demo_list = demo_list.rename(columns={demo_list.columns.to_list()[-1]: self.id})
         
@@ -202,7 +199,21 @@ class BEHRT_models():
 
         le = LabelEncoder()
         le.fit(meds_tokens)
+        le_name_mapping = dict(zip(le.classes_, le.transform(le.classes_)))
+
+        with open('./data/dict/condVocab.pkl', 'wb') as f:
+            pickle.dump(condVocab, f)
+        # with open('./data/dict/cond_vocab.pkl', 'rb') as f:
+        #     loaded_dict = pickle.load(f)
+        with open('./data/dict/ethVocab.pkl', 'wb') as f:
+            pickle.dump(ethVocab, f)
         
+        with open('./data/dict/insVocab.pkl', 'wb') as f:
+            pickle.dump(insVocab, f)
+        
+        with open('./data/dict/genderVocab.pkl', 'wb') as f:
+            pickle.dump(genderVocab, f)
+
         tokenized_src, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_age, tokenized_labels, tokenized_labs, tokenized_meds, meds_labels = self.tokenize_dataset(
             labs_list, cond_list, demo_list, labels, condVocab, ethVocab, insVocab, genderVocab, labs_tokens, meds_tokens)
         
