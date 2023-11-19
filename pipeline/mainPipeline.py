@@ -52,8 +52,8 @@ from feature_selection_hosp import *
 import tokenizer2
 from tokenizer2 import *
 
-import behrt_train
-from behrt_train import *
+import behrt_train2
+from behrt_train2 import *
 
 import feature_selection_icu
 from feature_selection_icu import *
@@ -94,9 +94,9 @@ from tokenizer2 import *
 #import dl_train
 #from dl_train import *
 
-importlib.reload(behrt_train)
-import behrt_train
-from behrt_train import *
+importlib.reload(behrt_train2)
+import behrt_train2
+from behrt_train2 import *
 
 importlib.reload(fairness)
 import fairness
@@ -122,12 +122,24 @@ proc_flag = False
 out_flag = False
 chart_flag = True
 med_flag = True
-
+"""
 if data_icu:
     token=tokenizer2.BEHRT_models(data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,False)
     tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, meds_labels, n_meds =token.tokenize()
 else:
     token=tokenization.BEHRT_models(data_icu,diag_flag,proc_flag,False,False,med_flag,lab_flag)
     tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels=token.tokenize()
+#"""
+#behrt_train.train_behrt(tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, meds_labels, n_meds)
+data2_dir = '/datasets/MIMIC-IV/'
+n_meds = 270 #291 for all data 
+names = ['tokenized_src', 'tokenized_age', 'tokenized_gender', 'tokenized_ethni', 'tokenized_ins', 'tokenized_labels', 'labs', 'meds']
+med_label = np.load(data2_dir + 'data/token/'+'meds_labels_5000.npy', allow_pickle=True)
+all_df = []
+for i in range(len(names)):
+    df = pd.read_csv(data2_dir + 'data/token/'+names[i]+'_5000.csv',index_col=0)
+    all_df.append(df)
+tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds = all_df    
 
-behrt_train.train_behrt(tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, meds_labels, n_meds)
+bert_model = behrt_train2.train_behrt(tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, med_label, n_meds)
+#bert_model.training_phase()

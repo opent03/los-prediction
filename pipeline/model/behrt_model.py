@@ -126,11 +126,12 @@ class BertModel(Bert.modeling.BertPreTrainedModel):
         # effectively the same as removing these entirely.
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-        print('here: ', input_ids.shape, age_ids.shape, gender_ids.shape, ethni_ids.shape, ins_ids.shape, seg_ids.shape, posi_ids.shape)
-        embedding_output = self.embeddings(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, if_include_meds=if_include_meds)
+        embedding_output = self.embeddings(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids)
+        print('here: ', embedding_output.shape, extended_attention_mask.shape)
         encoded_layers = self.encoder(embedding_output,
                                       extended_attention_mask,
                                       output_all_encoded_layers=output_all_encoded_layers)
+        print('there: ', encoded_layers.shape)
         sequence_output = encoded_layers[-1]
         pooled_output = self.pooler(sequence_output)
         if not output_all_encoded_layers:
@@ -149,13 +150,11 @@ class BertForEHRPrediction(Bert.modeling.BertPreTrainedModel):
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids=None, labs_ids=None,age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None, posi_ids=None, attention_mask=None, if_dab=False):
-        _, pooled_output = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
-                                     output_all_encoded_layers=False, if_include_meds=True)
+        _, pooled_output = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,output_all_encoded_layers=False, if_include_meds=True)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         if if_dab:
-            _, pooled_output_no_meds = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
-                                     output_all_encoded_layers=False, if_include_meds=False)
+            _, pooled_output_no_meds = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,output_all_encoded_layers=False, if_include_meds=False)
             pooled_output_no_meds = self.dropout(pooled_output_no_meds)
             logits_meds = self.med_grad_reverse_classifier(pooled_output_no_meds)
             return logits, logits_meds
@@ -197,7 +196,7 @@ class TrainConfig(object):
 
 
 class DataLoader(Dataset):
-    def __init__(self, dataframe, max_len, code='code', age='age', labels='labels'):
+    def __init__(self, dataframe, max_len, code='code', age='age', labels='labels', if_dab=False):
         self.max_len = max_len
         self.code = dataframe[code]
         self.age = dataframe[age]
@@ -205,10 +204,11 @@ class DataLoader(Dataset):
         self.gender = dataframe["gender"]
         self.ethni = dataframe["ethni"]
         self.ins = dataframe["ins"]
-        self.labs = dataframe["labs"]
-        self.meds = dataframe["meds"]
-        self.meds_labels = dataframe["meds_labels"]
-        self.n_meds = dataframe["n_meds"]
+        if if_dab:
+            self.labs = dataframe["labs"]
+            self.meds = dataframe["meds"]
+            self.meds_labels = dataframe["meds_labels"]
+            self.n_meds = dataframe["n_meds"]
 
     def __getitem__(self, index, if_dab=False):
         """

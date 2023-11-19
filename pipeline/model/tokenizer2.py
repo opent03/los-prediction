@@ -111,7 +111,8 @@ class BEHRT_models():
         cond_list = []
         labels =  pd.read_csv('/datasets/MIMIC-IV/data/csv/'+'labels.csv')
         first = True
-        labels = labels #[0:5000]
+        labels = labels[0:10]
+        #print('labels: ',labels)
         df_filter = pd.read_csv('./dynamic_item_dict_short_263.csv')
         id_filter = [int(i) for i in df_filter['itemid'].values]
         index_chart_only = df_filter[df_filter['type']=='CHART'].index.tolist()
@@ -209,6 +210,8 @@ class BEHRT_models():
 
         le = LabelEncoder()
         le.fit(meds_tokens)
+        
+        #print('condVocab: ', condVocab)
         
         tokenized_src, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_age, tokenized_labels, tokenized_labs, tokenized_meds, meds_labels = self.tokenize_dataset(
             labs_list, cond_list, demo_list, labels, condVocab, ethVocab, insVocab, genderVocab, labs_tokens, meds_tokens)
