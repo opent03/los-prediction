@@ -6,6 +6,7 @@ import os
 import importlib
 import sys
 from pathlib import Path
+from collections import namedtuple
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 
 class BEHRT_models():
@@ -26,25 +27,36 @@ class BEHRT_models():
         tokenized_age = []
         tokenized_labels = []
         idx = 0
-
+        c = 0
         print("STARTING TOKENIZATION.")
 
         for patient, group in tqdm.tqdm(labs_input.groupby(self.id)):
             tokenized_src.append([])
             tokenized_src[idx].append(vocab["token2idx"]['CLS'])
-            for row in cond_input[cond_input[self.id] == patient].itertuples(index=None):
-                for key, value in row._asdict().items():
+            k = cond_input[cond_input[self.id] == patient].columns
+            #for row in cond_input[cond_input[self.id] == patient].itertuples(index=None):
+            for row in cond_input[cond_input[self.id] == patient].itertuples(index=False): 
+                #for key, value in row._asdict().items():
+                for key, value in enumerate(row):
                     if value == '1':
-                        tokenized_src[idx].append(vocab["token2idx"][key])
+                        #tokenized_src[idx].append(vocab["token2idx"][key])
+                        tokenized_src[idx].append(vocab["token2idx"][k[key]])
             tokenized_src[idx].append(vocab["token2idx"]['SEP'])
-            for lab in group.itertuples(index=None):
-                for col in lab:
+            k = group.columns
+            
+            for lab in group.itertuples(index=False):
+                #print(lab)
+                #for col in lab:
+                for key, col in enumerate(lab):
                     if not isinstance(col, float):
+                        #tokenized_src[idx].append(vocab["token2idx"][col])
+                        #print(vocab['token2idx'])
                         tokenized_src[idx].append(vocab["token2idx"][col])
                 tokenized_src[idx].append(vocab["token2idx"]['SEP'])
             tokenized_src[idx][-1] = vocab["token2idx"]['SEP']
+            '''
             if len(tokenized_src[idx]) >= 512:
-                tokenized_src.pop()
+                tokenized_src.pop() 
             else:
                 gender = gender_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 1]]
                 ethnicity = demo_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 2]]
@@ -56,7 +68,22 @@ class BEHRT_models():
                 tokenized_age.append([age] * len(tokenized_src[idx]))
                 tokenized_labels.append(labels[labels[self.id] == patient].iloc[0, 1])
                 idx += 1
-
+            '''
+            if len(tokenized_src[idx]) > 512:
+                tokenized_src[idx] = tokenized_src[idx][:512]
+            
+            gender = gender_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 1]]
+            ethnicity = demo_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 2]]
+            insurance = ins_vocab[demo_input[demo_input[self.id] == patient].iloc[0, 3]]
+            age = demo_input[demo_input[self.id] == patient].iloc[0, 0]
+            tokenized_gender.append([gender] * len(tokenized_src[idx]))
+            tokenized_ethni.append([ethnicity] * len(tokenized_src[idx]))
+            tokenized_ins.append([insurance] * len(tokenized_src[idx]))
+            tokenized_age.append([age] * len(tokenized_src[idx]))
+            tokenized_labels.append(labels[labels[self.id] == patient].iloc[0, 1])
+            idx += 1
+            
+            
         print("FINISHED TOKENIZATION. \n")
         return pd.DataFrame(tokenized_src), pd.DataFrame(tokenized_gender), pd.DataFrame(tokenized_ethni), pd.DataFrame(tokenized_ins), pd.DataFrame(tokenized_age), pd.DataFrame(tokenized_labels)
 
@@ -67,7 +94,7 @@ class BEHRT_models():
         cond_list = []
         labels =  pd.read_csv('./data/csv/'+'labels.csv')
         first = True
-        #labels = labels.iloc[:1, :]
+        #labels = labels.iloc[:100, :]
         print("STARTING READING FILES.")
         for hadm in tqdm.tqdm(labels.itertuples(), total = labels.shape[0]):
             labs = pd.read_csv('./data/csv/' + str(hadm[1]) + '/dynamic.csv')
@@ -93,14 +120,14 @@ class BEHRT_models():
         cond_list = pd.DataFrame(cond_list, columns=condVocab_l + [self.id])
         labs_list = labs_list.rename(columns={labs_list.columns.to_list()[-1]: self.id})
         demo_list = demo_list.rename(columns={demo_list.columns.to_list()[-1]: self.id})
-
+        '''
         labs_list = pd.DataFrame(labs_list)
         demo_list = pd.DataFrame(demo_list)
         cond_list = pd.DataFrame(cond_list, columns=condVocab_l + [self.id])
 
         labs_list = labs_list.rename(columns={labs_list.columns.to_list()[-1]: self.id})
         demo_list = demo_list.rename(columns={demo_list.columns.to_list()[-1]: self.id})
-
+        '''
         labs_list.replace(0, np.nan, inplace=True)
 
         '''    for col in labs_list.columns.to_list()[:-1]:
@@ -148,7 +175,7 @@ class BEHRT_models():
 
         tokenized_src, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_age, tokenized_labels = self.tokenize_dataset(
             labs_list, cond_list, demo_list, labels, condVocab, ethVocab, insVocab, genderVocab)
-
+        print(tokenized_labels)
         print("FINAL COHORT STATISTICS: ")
         print(str(len(tokenized_labels[tokenized_labels[0] == 1])) + " Positive samples.")
         print(str(len(tokenized_labels[tokenized_labels[0] == 0])) + " Negative samples.\n")
