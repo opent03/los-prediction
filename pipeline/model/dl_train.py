@@ -36,7 +36,7 @@ import argparse
 from torch.autograd import Variable
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
-get_ipython().run_line_magic('matplotlib', 'inline')
+#get_ipython().run_line_magic('matplotlib', 'inline')
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -136,7 +136,7 @@ class DL_models():
         for i in range(self.k_fold):
             self.create_model(self.model_type)
             print("[ MODEL CREATED ]")
-            print(self.net)
+            #print(self.net)
             print("==================={0:2d} FOLD=====================".format(i))
             
             test_hids=list(k_hids[i])
@@ -499,6 +499,7 @@ class DL_models():
         output_df['age']=self.age
         output_df['insurance']=self.ins
         
-        with open('./data/output/'+'outputDict', 'wb') as fp:
+        #with open('./data/output/'+'outputDict', 'wb') as fp:
+        with open('./outputDicts/'+ self.model_type + 'outputDict', 'wb') as fp:
                pickle.dump(output_df, fp)
 

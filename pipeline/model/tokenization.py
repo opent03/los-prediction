@@ -135,7 +135,8 @@ class BEHRT_models():
                     labs_list = labs_list.drop(columns=col)
         '''
         labs_codes = set()
-        for col in labs_list.columns.to_list()[:-1]:
+        print('CLEANING...')
+        for col in tqdm.tqdm(labs_list.columns.to_list()[:-1]):
             labels_l = []
             if labs_list[col].nunique() > 1 :
                 for i in range(len(pd.qcut(labs_list[col], 4, duplicates='drop', retbins=True)[1]) - 1):
@@ -172,6 +173,7 @@ class BEHRT_models():
         labs_list = labs_list.sort_values(by=[self.id, 'index'])
         labs_list = labs_list.drop(columns=['index'])
         demo_list = demo_list.sort_values(by=self.id)
+        print('CLEANING DONE!')
 
         tokenized_src, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_age, tokenized_labels = self.tokenize_dataset(
             labs_list, cond_list, demo_list, labels, condVocab, ethVocab, insVocab, genderVocab)
