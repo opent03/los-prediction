@@ -16,7 +16,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 
 #torch.manual_seed(42)
 #torch.backends.cudnn.deterministic = True
-
+class wave_act(nn.Module): 
+    def __init__(self, beta=0.5): 
+        super(wave_act, self).__init__() 
+        self.beta = beta
+  
+    def forward(self, x): 
+        return torch.sin(self.beta*x)*(torch.exp(-(x**2)/2))
+    
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, segment, age
     """
@@ -100,12 +107,15 @@ class BertModel(Bert.modeling.BertPreTrainedModel):
             self.layer = torch.nn.Conv1d(seq_len, seq_len//2, 1)
             dec_layer = []
             dec_layer.append(torch.nn.Conv1d(seq_len, seq_len//2, 1))
-            dec_layer.append(torch.nn.ReLU())
+            dec_layer.append(torch.nn.Tanh())
             seq_len = seq_len//2
-            for i in range(4):
-                dec_layer.append(torch.nn.Conv1d(seq_len, seq_len//4, 1))
-                dec_layer.append(torch.nn.ReLU())
-                seq_len = seq_len//4
+            for i in range(4): #4, 2
+                dec_layer.append(torch.nn.Conv1d(seq_len, seq_len//4, 1)) #4, 16
+                if(i==3):
+                    dec_layer.append(wave_act())
+                else:
+                    dec_layer.append(torch.nn.Tanh())
+                seq_len = seq_len//4 #4, 16
             self.dec_layer = nn.ModuleList(dec_layer)
 
             ###causal version 
@@ -167,7 +177,7 @@ class BertModel(Bert.modeling.BertPreTrainedModel):
 
 
 class BertForEHRPrediction(Bert.modeling.BertPreTrainedModel):
-    def __init__(self, config, num_labels, conv_wavelet=False):
+    def __init__(self, config, num_labels, conv_wavelet=True):
         super(BertForEHRPrediction, self).__init__(config)
         self.num_labels = num_labels
         self.bert = BertModel(config, conv_wavelet = conv_wavelet)

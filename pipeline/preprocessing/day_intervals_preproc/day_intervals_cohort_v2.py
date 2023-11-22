@@ -199,6 +199,8 @@ def partition_by_mort(df:pd.DataFrame, group_col:str, visit_col:str, admit_col:s
     #cohort=cohort.fillna(0)
     pos_cohort=cohort[~cohort[death_col].isna()]
     neg_cohort=cohort[cohort[death_col].isna()]
+    #print(cohort[death_col])
+    #print(cohort[disch_col])
     neg_cohort=neg_cohort.fillna(0)
     pos_cohort=pos_cohort.fillna(0)
     pos_cohort[death_col] = pd.to_datetime(pos_cohort[death_col])

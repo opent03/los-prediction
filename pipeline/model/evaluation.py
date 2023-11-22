@@ -12,6 +12,7 @@ import numpy as np
 from collections import defaultdict
 import sys
 from pathlib import Path
+import imblearn
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 
 if not os.path.exists("./data/output"):
@@ -100,7 +101,12 @@ class Loss(nn.Module):
             auc = metrics.auc(fpr, tpr)
         if(self.aurocPlot):
             self.auroc_plot(labels, prob)
-        
+
+        print(f'AU-ROC score: {round(metrics.roc_auc_score(labels, prob),2)}')
+        pred_label = (prob>=0.5).astype(int)
+
+        print('G-mean score: ', round(imblearn.metrics.geometric_mean_score(labels, pred_label, average='binary'),2))
+
         #################           AUPRC            #######################
         if(self.auprc):
             base = ((labels==1).sum())/labels.shape[0]
@@ -128,7 +134,15 @@ class Loss(nn.Module):
         
         #################           Accuracy            #######################
         if(self.acc):
-            accur=metrics.accuracy_score(labels,prob>=0.5)
+            #print(labels)
+            #print(prob>0.5)
+            pred_label = (prob>=0.5).astype(int)
+            accur=metrics.accuracy_score(labels,pred_label)
+
+            inds = (labels==1)
+            print(f'positive accuracy {round(sum(labels[inds]==pred_label[inds])/(sum(inds)), 3)} and len labels: {sum(inds)}')
+            inds = (labels==0)
+            print(f'negative accuracy {round(sum(labels[inds]==pred_label[inds])/(sum(inds)), 3)} and len labels: {sum(inds)}')
         
         #################           Precision/PPV  (TP/(TP+FP))         #######################
         if(self.ppv):

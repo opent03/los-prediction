@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 
 class BEHRT_models():
     def __init__(self,data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag):
+        print('tokenizer initialization')
         self.data_icu=data_icu
         if self.data_icu:
             self.id='stay_id'
@@ -111,7 +112,7 @@ class BEHRT_models():
         cond_list = []
         labels =  pd.read_csv('/datasets/MIMIC-IV/data/csv/'+'labels.csv')
         first = True
-        labels = labels[0:10]
+        labels = labels[0:5]
         #print('labels: ',labels)
         df_filter = pd.read_csv('./dynamic_item_dict_short_263.csv')
         id_filter = [int(i) for i in df_filter['itemid'].values]
