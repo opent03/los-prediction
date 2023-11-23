@@ -112,11 +112,11 @@ chart_flag=True
 proc_flag=True
 med_flag=True
 
-tokenized_src = pd.read_csv('data/token/tokenized_src_all.csv', index_col=0)
-tokenized_age = pd.read_csv('data/token/tokenized_age_all.csv', index_col=0)
-tokenized_gender = pd.read_csv('data/token/tokenized_gender_all.csv', index_col=0)
-tokenized_ethni = pd.read_csv('data/token/tokenized_ethni_all.csv', index_col=0)
-tokenized_ins = pd.read_csv('data/token/tokenized_ins_all.csv', index_col=0)
-tokenized_labels = pd.read_csv('data/token/tokenized_labels_all.csv', index_col=0)
+tokenized_src = pd.read_csv('token/tokenized_src_5000.csv', index_col=0)
+tokenized_age = pd.read_csv('token/tokenized_age_5000.csv', index_col=0)
+tokenized_gender = pd.read_csv('token/tokenized_gender_5000.csv', index_col=0)
+tokenized_ethni = pd.read_csv('token/tokenized_ethni_5000.csv', index_col=0)
+tokenized_ins = pd.read_csv('token/tokenized_ins_5000.csv', index_col=0)
+tokenized_labels = pd.read_csv('token/tokenized_labels_5000.csv', index_col=0)
 
 behrt_train.train_behrt(tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels)

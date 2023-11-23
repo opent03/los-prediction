@@ -12,7 +12,7 @@ import sys
 
 import behrt_model
 from behrt_model import *
-
+from tqdm import tqdm
 
 from pathlib import Path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
@@ -72,7 +72,7 @@ class train_behrt():
             'hidden_size': 288, # word embedding and seg embedding hidden size
             'seg_vocab_size': 2, # number of vocab for seg embedding
             'age_vocab_size': int(age.max().max() + 1), # number of vocab for age embedding
-            'gender_vocab_size': 2,
+            'gender_vocab_size': 4,
             'ethni_vocab_size': int(ethni.max().max()) + 1,
             'ins_vocab_size': int(ins.max().max()) + 1,
             'max_position_embedding': self.train_params['max_len_seq'], # maximum number of tokens
@@ -147,7 +147,7 @@ class train_behrt():
 
         preds = torch.sigmoid(torch.FloatTensor(preds.values))
         labels = torch.IntTensor(labels.values)
-        print(preds)
+        
         from torchmetrics import AUROC
         from torchmetrics import AveragePrecision
         from torchmetrics import Precision
@@ -171,7 +171,8 @@ class train_behrt():
         tr_loss = 0
         start = time.time()
         self.behrt.train()
-        for step, batch in enumerate(trainload):
+        
+        for step, batch in enumerate(tqdm.tqdm(trainload)):
             self.optim_behrt.zero_grad()
             batch = tuple(t for t in batch)
             input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels = batch
@@ -189,12 +190,12 @@ class train_behrt():
                             attention_mask=attMask)
             loss_fct = nn.BCEWithLogitsLoss()
             loss = loss_fct(logits, labels)
-            print(loss)
+
             loss.backward()
             #print("{}GBs".format(torch.cuda.max_memory_allocated()/int(1e9)))
             tr_loss += loss.item()
-            if step%500 == 0:
-                print(loss.item())
+            #if step%500 == 0:
+            #    print(loss.item())
             self.optim_behrt.step()
             del loss
         cost = time.time() - start

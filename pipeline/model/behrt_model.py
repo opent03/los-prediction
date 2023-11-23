@@ -43,10 +43,17 @@ class BertEmbeddings(nn.Module):
             age_ids = torch.zeros_like(word_ids)
         if posi_ids is None:
             posi_ids = torch.zeros_like(word_ids)
+        
+            
         word_embed = self.word_embeddings(word_ids)
         segment_embed = self.segment_embeddings(seg_ids)
         age_embed = self.age_embeddings(age_ids)
-        gender_embed = self.gender_embeddings(gender_ids)
+        try:
+            gender_embed = self.gender_embeddings(gender_ids)
+        except:
+            for e in gender_embed:
+                print(e)
+            exit(1)
         ethnicity_embed = self.ethnicity_embeddings(ethni_ids)
         ins_embed = self.ins_embeddings(ins_ids)
         posi_embeddings = self.posi_embeddings(posi_ids)
@@ -155,7 +162,7 @@ class BertForEHRPrediction(Bert.modeling.BertPreTrainedModel):
         self.num_labels = num_labels
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.cnn = CNN(config)
+        #self.cnn = CNN(config)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
         self.apply(self.init_bert_weights)
         
