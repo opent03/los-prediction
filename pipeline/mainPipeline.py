@@ -127,8 +127,8 @@ med_flag = True
 
 if data_icu:
     token=tokenization.BEHRT_models(data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,False)
-    #tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, meds_labels, n_meds =token.tokenize()
     '''
+    tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, meds_labels, n_meds =token.tokenize()
     names = ['tokenized_src', 'tokenized_age', 'tokenized_gender', 'tokenized_ethni', 'tokenized_ins', 'tokenized_labels', 'labs', 'meds']
     print(n_meds)
     all_df = [tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds]
@@ -140,9 +140,10 @@ if data_icu:
     np.save(data2_dir + 'meds_labels_5000.npy', np.array(meds_labels, dtype=object), allow_pickle=True)
     assert 0
     '''
-    #data2_dir = '/datasets/MIMIC-IV/'
     data2_dir = '/h/chloexq/los-prediction/pipeline/data/features/'
-    n_meds = 270
+    # 260 for random sample
+    # 259 for upsample
+    n_meds = 259
     names = ['tokenized_src', 'tokenized_age', 'tokenized_gender', 'tokenized_ethni', 'tokenized_ins', 'tokenized_labels', 'labs', 'meds']
     #meds_labels = np.load(data2_dir + 'data/token/'+'meds_labels_5000.npy', allow_pickle=True)
     meds_labels = np.load(data2_dir + 'meds_labels_5000.npy', allow_pickle=True)
@@ -153,7 +154,7 @@ if data_icu:
         all_df.append(df)
     tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds = all_df
 else:
-    token=tokenization.BEHRT_models(data_icu,diag_flag,proc_flag,False,False,med_flag,lab_flag)
+    token=tokenization.BEHRT_models(data_icu,diag_flag,proc_flag,False,False, med_flag, lab_flag)
     tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels=token.tokenize()
 
 behrt_train.train_behrt(tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, meds_labels, n_meds)

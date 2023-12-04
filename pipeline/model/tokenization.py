@@ -35,8 +35,7 @@ class BEHRT_models():
         idx = 0
 
         print("STARTING TOKENIZATION.")
-
-        for patient, group in tqdm.tqdm(labs_input.groupby(self.id)):
+        for patient, group in tqdm.tqdm(labs_input.groupby([self.id])):
             tokenized_src.append([])
             tokenized_src[idx].append(vocab["token2idx"]['CLS'])
             
@@ -56,7 +55,7 @@ class BEHRT_models():
 
             for lab in group.itertuples(index=None):
                 for col in lab:
-                    if not isinstance(col, float) and not pd.isnull(col):
+                    if not isinstance(col, float) and not pd.isnull(col) and not '.' in col:
                         tokenized_src[idx].append(vocab["token2idx"][col])
                         if col in labs_tokens:
                             tokenized_labs[idx].append(vocab["token2idx"][col])
@@ -100,30 +99,28 @@ class BEHRT_models():
         labs_list = []
         demo_list = []
         cond_list = []
-        labels =  pd.read_csv('/datasets/MIMIC-IV/data/csv/'+'labels.csv')
+        #labels =  pd.read_csv('/datasets/MIMIC-IV/data/csv/'+'labels.csv')
+        labels = pd.read_csv('/h/chloexq/los-prediction/pipeline/data/labels.csv')
         first = True
-        labels = labels[0:5000]
         df_filter = pd.read_csv('/h/chloexq/los-prediction/pipeline/dynamic_item_dict_short_263.csv')
         id_filter = [int(i) for i in df_filter['itemid'].values]
         index_chart_only = df_filter[df_filter['type']=='CHART'].index.tolist()
         index_meds_only = df_filter[df_filter['type']=='MEDS'].index.tolist()
         print("STARTING READING FILES.")
         for hadm in tqdm.tqdm(labels.itertuples(), total = labels.shape[0]):
-            labs = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm[1]) + '/dynamic.csv')
+            hadm_1 = str(hadm[1]).split('.')[0] #hadm[1]
+            labs = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm_1) + '/dynamic.csv')
             labs = labs.loc[:, labs.iloc[0, :].isin(id_filter)].copy()
-            
-            demo = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm[1]) + '/demo.csv')
-            cond = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm[1]) + '/static.csv')
+            demo = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm_1) + '/demo.csv')
+            cond = pd.read_csv('/datasets/MIMIC-IV/data/csv/' + str(hadm_1) + '/static.csv')
             if first:
                 condVocab_l = cond.iloc[0: , :].values.tolist()[0]
                 first = False
             labs = labs.iloc[1: , :]
             cond = cond.iloc[1: , :]
-
             labs[self.id] = hadm[1]
             demo[self.id] = hadm[1]
             cond[self.id] = hadm[1]
-
             labs_list += labs.values.tolist()
             demo_list += demo.values.tolist()
             cond_list += cond.values.tolist()
@@ -213,7 +210,7 @@ class BEHRT_models():
         
         with open('./data/dict/genderVocab.pkl', 'wb') as f:
             pickle.dump(genderVocab, f)
-
+        
         tokenized_src, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_age, tokenized_labels, tokenized_labs, tokenized_meds, meds_labels = self.tokenize_dataset(
             labs_list, cond_list, demo_list, labels, condVocab, ethVocab, insVocab, genderVocab, labs_tokens, meds_tokens)
         

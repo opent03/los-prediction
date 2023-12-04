@@ -29,10 +29,13 @@ from behrt_model import *
 
 class train_behrt():
     def __init__(self,src, age, sex, ethni, ins, target_data, labs, meds, meds_labels, n_meds):
-
-        train_l = int(len(src)*0.70)
-        val_l = int(len(src)*0.1)
-        test_l = len(src) - val_l - train_l
+        df_split = pd.read_csv('/h/chloexq/los-prediction/pipeline/data/labels_split.csv')
+        train_l = len(df_split[df_split['split']=='train'])
+        val_l = len(df_split[df_split['split']=='val'])
+        test_l = len(df_split[df_split['split']=='test'])
+        #train_l = int(len(src)*0.70)
+        #val_l = int(len(src)*0.1)
+        #test_l = len(src) - val_l - train_l
         number_output = target_data.shape[1]
 
         file_config = {
@@ -90,15 +93,13 @@ class train_behrt():
             'number_meds': n_meds,
         }
 
-        def run_epoch(e, trainload, device):
+        def run_epoch(e, trainload, device, if_dab, dab_w, setting):
             tr_loss = 0
             loss_cls_tr = 0
             loss_dab_tr = 0
             start = time.time()
             behrt.train()
-            if_dab = True
-            dab_w = 10
-            print(if_dab, dab_w)
+            print(if_dab, dab_w, setting)
             for step, batch in enumerate(trainload):
                 optim_behrt.zero_grad()
                 batch = tuple(t for t in batch)
@@ -116,7 +117,7 @@ class train_behrt():
                 attMask = attMask.to(device)
                 labels = labels.to(device)
                 meds_labels = meds_labels.to(device)
-                logits, logits_meds = behrt(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
+                logits, logits_meds, logits_meds_pred = behrt(input_ids, labs_ids, meds_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
                                attention_mask=attMask, if_dab=if_dab)
 
                 #logits = behrt(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
@@ -125,11 +126,23 @@ class train_behrt():
                 loss_fct = nn.BCEWithLogitsLoss()
                 loss = loss_fct(logits, labels)
                 loss_cls_tr += loss.item()
-                if if_dab:
-                    criterion_dab = nn.BCEWithLogitsLoss() #nn.KLDivLoss(reduction="batchmean") #nn.BCEWithLogitsLoss()
+
+                if if_dab and e > 4:
+                    criterion_dab = nn.BCEWithLogitsLoss() #nn.KLDivLoss(reduction="batchmean")
                     #logits_meds = nn.functional.log_softmax(logits_meds, dim=1)
                     #meds_labels = nn.functional.softmax(meds_labels.float(), dim=1)
-                    loss_dab = criterion_dab(logits_meds, meds_labels.float())
+                    if setting == 'grad_reverse':
+                        # TODO: Update grad_reverse re meds -> labels
+                        loss_dab = criterion_dab(logits_meds, meds_labels.float())
+                        assert behrt.med_grad_reverse_classifier.reverse_grad == True
+                    elif setting == 'confuse':
+                        confuse_labels = torch.ones_like(meds_labels).float()/meds_labels.shape[-1]
+                        loss_dab = criterion_dab(logits_meds, confuse_labels)
+
+                        confuse_labels_meds_pred = torch.ones_like(labels).float()/2.0
+                        loss_dab_meds_pred = criterion_dab(logits_meds_pred, confuse_labels_meds_pred)
+                        loss_dab = loss_dab + loss_dab_meds_pred
+                        assert behrt.med_grad_reverse_classifier.reverse_grad == False
                     loss += dab_w*loss_dab
                     loss_dab_tr += dab_w*loss_dab.item() 
 
@@ -146,14 +159,14 @@ class train_behrt():
             return tr_loss, cost, loss_cls_tr, loss_dab_tr
 
 
-        def train(trainload, valload, device):
+        def train(trainload, valload, device, if_dab, dab_w, setting):
             best_val = math.inf
             early_i = 0 #for early stopping 
             for e in range(train_params["epochs"]):
                 if(early_i==6):
                     break
                 print("Epoch n" + str(e))
-                train_loss, train_time_cost, loss_cls, loss_dab = run_epoch(e, trainload, device)
+                train_loss, train_time_cost, loss_cls, loss_dab = run_epoch(e, trainload, device, if_dab, dab_w, setting)
                 print('Finished train')
                 val_loss, val_time_cost, pred, label = eval(valload, False, device)
                 train_loss = train_loss / math.ceil((train_params["train_data_len"] / train_params['batch_size']))
@@ -200,7 +213,7 @@ class train_behrt():
                 labs_ids = labs_ids.to(device)
                 meds_ids = meds_ids.to(device)
 
-                logits, _ = behrt(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
+                logits, _, _ = behrt(input_ids, labs_ids, meds_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
                                attention_mask=attMask)
 
                 loss_fct = nn.BCEWithLogitsLoss()
@@ -264,8 +277,14 @@ class train_behrt():
         val_data = {"code":val_code, "age":val_age, "labels":val_labels, "gender" : val_gender, "ethni" : val_ethni, "ins" : val_ins, "labs": val_labs, "meds": val_meds, "meds_labels": val_meds_labels, "n_meds": n_meds}
         test_data = {"code":test_code, "age":test_age, "labels":test_labels, "gender" : test_gender, "ethni" : test_ethni, "ins" : test_ins, "labs": test_labs, "meds": test_meds, "meds_labels": test_meds_labels, "n_meds": n_meds}
 
+        if_dab = False
+        dab_w = 1
+        setting = 'confuse'
+        assert setting in ['grad_reverse', 'confuse']
+
         conf = BertConfig(model_config)
-        behrt = BertForEHRPrediction(conf, model_config['number_output'])
+    
+        behrt = BertForEHRPrediction(conf, model_config['number_output'], setting)
 
         behrt = behrt.to(train_params['device'])
 
@@ -281,7 +300,7 @@ class train_behrt():
         ValDset = DataLoader(val_data, max_len=train_params['max_len_seq'], code='code')
         valload = torch.utils.data.DataLoader(dataset=ValDset, batch_size=train_params['batch_size'], shuffle=True)
 
-        train_loss, val_loss = train(trainload, valload, train_params['device'])
+        train_loss, val_loss = train(trainload, valload, train_params['device'], if_dab, dab_w, setting)
 
         behrt.load_state_dict(torch.load("./saved_models/checkpoint/behrt", map_location=train_params['device']))
         print("Loading succesfull")
