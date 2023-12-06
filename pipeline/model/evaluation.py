@@ -12,13 +12,14 @@ import numpy as np
 from collections import defaultdict
 import sys
 from pathlib import Path
+import imblearn
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 
 if not os.path.exists("./data/output"):
     os.makedirs("./data/output")
     
 class Loss(nn.Module):
-    def __init__(self,device,acc,ppv,sensi,tnr,npv,auroc,aurocPlot,auprc,auprcPlot,callb,callbPlot):
+    def __init__(self,device,acc,ppv,sensi,tnr,npv,auroc,aurocPlot,auprc,auprcPlot,callb,callbPlot,cohen=True):
         super(Loss, self).__init__()
         self.classify_loss = nn.BCELoss()
         self.classify_loss2 = nn.BCEWithLogitsLoss()
@@ -34,6 +35,7 @@ class Loss(nn.Module):
         self.auprcPlot=auprcPlot
         self.callb=callb
         self.callbPlot=callbPlot
+        self.cohen=cohen
 
     def forward(self, prob, labels,logits, train=True, standalone=False):
         classify_loss='NA' 
@@ -95,17 +97,26 @@ class Loss(nn.Module):
         if(self.auroc):
 #             print(labels)
 #             print(prob)
-            fpr, tpr, threshholds = metrics.roc_curve(labels, prob, pos_label=1)
+            fpr, tpr, threshholds = metrics.roc_curve(labels, prob)
             auc = metrics.auc(fpr, tpr)
         if(self.aurocPlot):
             self.auroc_plot(labels, prob)
-        
+
+        print(f'AU-ROC score: {round(metrics.roc_auc_score(labels, prob),2)}')
+        pred_label = (prob>=0.5).astype(int)
+
+        print('G-mean score: ', round(imblearn.metrics.geometric_mean_score(labels, pred_label, average='binary'),2))
+
         #################           AUPRC            #######################
         if(self.auprc):
             base = ((labels==1).sum())/labels.shape[0]
 
             precision, recall, thresholds = metrics.precision_recall_curve(labels, prob)
             apr = metrics.auc(recall, precision)
+            
+            
+        if(self.cohen):
+            cohen_metric = metrics.cohen_kappa_score(labels, prob>0.5)
         
         
         # stati number
@@ -123,7 +134,15 @@ class Loss(nn.Module):
         
         #################           Accuracy            #######################
         if(self.acc):
-            accur=metrics.accuracy_score(labels,prob>=0.5)
+            #print(labels)
+            #print(prob>0.5)
+            pred_label = (prob>=0.5).astype(int)
+            accur=metrics.accuracy_score(labels,pred_label)
+
+            inds = (labels==1)
+            print(f'positive accuracy {round(sum(labels[inds]==pred_label[inds])/(sum(inds)), 3)} and len labels: {sum(inds)}')
+            inds = (labels==0)
+            print(f'negative accuracy {round(sum(labels[inds]==pred_label[inds])/(sum(inds)), 3)} and len labels: {sum(inds)}')
         
         #################           Precision/PPV  (TP/(TP+FP))         #######################
         if(self.ppv):
@@ -160,6 +179,7 @@ class Loss(nn.Module):
         print("NPV: {:.2f}".format(npv_val))
         print("ECE: {:.2f}".format(ECE))
         print("MCE: {:.2f}".format(MCE))
+        print("Cohen Koppa metric: {:.2f}".format(cohen_metric))
         
         #return [classify_loss, auc,apr,base,accur,prec,recall,spec,npv_val,ECE,MCE]
     
@@ -169,7 +189,7 @@ class Loss(nn.Module):
         plt.plot([0, 1], [0, 1],'r--')
 
         
-        fpr, tpr, thresh = metrics.roc_curve(label, pred, pos_label=1)
+        fpr, tpr, thresh = metrics.roc_curve(label, pred)
         auc = metrics.roc_auc_score(label, pred)
         plt.plot(fpr, tpr, label=f'Deep Learning Model, auc = {str(round(auc,3))}')
 
@@ -248,5 +268,3 @@ class Loss(nn.Module):
         if curve:
             self.calb_curve(bins,bin_accs,ECE, MCE)
         return ECE, MCE
-
-
