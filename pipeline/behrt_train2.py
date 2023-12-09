@@ -28,16 +28,28 @@ if not os.path.exists("./saved_models/checkpoint"):
 importlib.reload(behrt_model2)
 import behrt_model2
 from behrt_model2 import *
+from sklearn.model_selection import train_test_split
 
 #torch.manual_seed(42)
 #torch.backends.cudnn.deterministic = True
     
 class train_behrt():
-    def __init__(self,src, age, sex, ethni, ins, target_data, labs, meds, meds_labels, n_meds):
+    def __init__(self,src, age, sex, ethni, ins, target_data, labs, meds, meds_labels, n_meds, df_split_loc =None):
 
-        train_l = int(len(src)*0.70)
-        val_l = int(len(src)*0.1)
-        test_l = len(src) - val_l - train_l
+        if(df_split_loc != None):
+            df_split = pd.read_csv(df_split_loc) #data_random_upsample, data_random_5000
+            train_l = len(df_split[df_split['split']=='train'])
+            val_l = len(df_split[df_split['split']=='val'])
+            test_l = len(df_split[df_split['split']=='test'])
+        else:
+            #train_l = int(len(src)*0.70)
+            #val_l = int(len(src)*0.1)
+            #test_l = len(src) - val_l - train_l
+
+            indices = np.arrange(0, len(src), 1)
+            train_ra, val_ra = train_test_split(indices, test_size = 0.3, shuffle=True) #random_state
+            test_ra, val_ra = train_test_split(val_ra, test_size = 0.33, shuffle=True)
+
         number_output = target_data.shape[1]
 
         file_config = {
@@ -57,7 +69,7 @@ class train_behrt():
         }
 
         optim_param = {
-            'lr': 3e-5,
+            'lr': 1e-4,
             'warmup_proportion': 0.1,
             'weight_decay': 0.01
         }
@@ -96,8 +108,11 @@ class train_behrt():
         }
 
         
-
-
+        """
+        train_code, val_code, test_code = src.values[train_ra], src.values[val_ra], src.values[test_ra]
+        train_labs, val_labs, test_labs = labs.values[train_ra], labs.values[val_ra], labs.values[test_ra]
+        train_meds, val_meds, test_meds = meds.values[train_ra], meds.values[val_ra], meds.values[test_ra]
+        #"""
         train_code = src.values[:train_l]
         val_code = src.values[train_l:train_l + val_l]
         test_code = src.values[train_l + val_l:]
@@ -145,10 +160,18 @@ class train_behrt():
 
         #models parameters
         transformer_vars = [i for i in behrt.parameters()]
-
+        """
+        print(len(transformer_vars))
+        i = 0 #106 is the last of encoder
+        for name, param in behrt.state_dict().items():
+            print(i, name)
+            i += 1
+        #"""
         #optimizer
-        optim_behrt = torch.optim.Adam(transformer_vars, lr=3e-5)
-
+        optim_behrt = torch.optim.Adam(transformer_vars, lr=optim_param['lr']) #3e-5
+        
+        #optim_behrt =  torch.optim.Adam([{'params': transformer_vars[:105], 'lr': 3e-5, 'momentum': 0.9 }, 
+        #       {'params': transformer_vars[105:], 'lr': 1e-4, 'momentum': 0.9}]) #Higher learning rate for classifier
         TrainDset = DataLoader(train_data, max_len=train_params['max_len_seq'], code='code')
         trainload = torch.utils.data.DataLoader(dataset=TrainDset, batch_size=train_params['batch_size'], shuffle=True)
 
@@ -160,7 +183,7 @@ class train_behrt():
         self.train_params = train_params
         train_loss, val_loss = self.train(trainload, valload, train_params['device'])
 
-        behrt.load_state_dict(torch.load("./saved_models/checkpoint/behrt", map_location=train_params['device']))
+        self.behrt.load_state_dict(torch.load("./saved_models/checkpoint/behrt", map_location=train_params['device']))
         print("Loading succesfull")
 
         TestDset = DataLoader(test_data, max_len=train_params['max_len_seq'], code='code')
@@ -194,7 +217,7 @@ class train_behrt():
         recall = Recall()
         print('recall: ', recall(preds_hard, labels))
         loss_func = evaluation.Loss('cpu',True,True,True,True,True,True,True,True,True,True,True)
-        loss_func(sig_pred.cpu(),labels.cpu(),preds.cpu(),False,False)
+        #loss_func(sig_pred.cpu(),labels.cpu(),preds.cpu(),False,False)
 
     def run_epoch(self, e, trainload, device):
         tr_loss = 0
@@ -274,8 +297,8 @@ class train_behrt():
             else: 
                 early_i += 1
 
-            if(e==0):
-                break
+            #if(e==0):
+                #break
         return train_loss, val_loss
 
 

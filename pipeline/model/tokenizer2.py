@@ -238,8 +238,11 @@ class BEHRT_models():
         
         # TODO: Fill NaN in dynamic data with PAD token value 
         # In other dfs such as age, gender etc., fill NaN with a new token to indicate missingness
+        tokenized_src.interpolate(inplace=True)
         tokenized_src.fillna(0, inplace=True)
+        tokenized_labs.interpolate(inplace=True)
         tokenized_labs.fillna(0, inplace=True)
+        #tokenized_meds.interpolate(inplace=True)
         tokenized_meds.fillna(0, inplace=True)
 
         tokenized_age.fillna(int(tokenized_age.max().max() + 1), inplace=True)

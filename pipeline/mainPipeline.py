@@ -131,15 +131,18 @@ else:
     tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels=token.tokenize()
 #"""
 #behrt_train.train_behrt(tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, meds_labels, n_meds)
-data2_dir = '/datasets/MIMIC-IV/'
+#data2_dir = '/datasets/MIMIC-IV/' + 'data/token/'
+#df_split_loc = None
+data2_dir = './data/data_random_upsample/features/'
+df_split_loc = './data/data_random_upsample/labels_split.csv'
 n_meds = 270 #291 for all data 
 names = ['tokenized_src', 'tokenized_age', 'tokenized_gender', 'tokenized_ethni', 'tokenized_ins', 'tokenized_labels', 'labs', 'meds']
-med_label = np.load(data2_dir + 'data/token/'+'meds_labels_5000.npy', allow_pickle=True)
+med_label = np.load(data2_dir+'meds_labels_5000.npy', allow_pickle=True)
 all_df = []
 for i in range(len(names)):
-    df = pd.read_csv(data2_dir + 'data/token/'+names[i]+'_5000.csv',index_col=0)
+    df = pd.read_csv(data2_dir+names[i]+'_5000.csv',index_col=0)
     all_df.append(df)
 tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds = all_df    
 
-bert_model = behrt_train2.train_behrt(tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, med_label, n_meds)
+bert_model = behrt_train2.train_behrt(tokenized_src, tokenized_age, tokenized_gender, tokenized_ethni, tokenized_ins, tokenized_labels, labs, meds, med_label, n_meds, df_split_loc=df_split_loc)
 #bert_model.training_phase()
