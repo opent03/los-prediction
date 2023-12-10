@@ -140,6 +140,7 @@ if data_icu:
     np.save(data2_dir + 'meds_labels_5000.npy', np.array(meds_labels, dtype=object), allow_pickle=True)
     assert 0
     '''
+    #data2_dir = '/h/chloexq/los-prediction/pipeline/data_random_5000/features/'
     data2_dir = '/h/chloexq/los-prediction/pipeline/data/features/'
     # 260 for random sample
     # 259 for upsample

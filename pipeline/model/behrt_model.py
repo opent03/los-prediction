@@ -144,19 +144,25 @@ class BertForEHRPrediction(Bert.modeling.BertPreTrainedModel):
         self.num_labels = num_labels
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, num_labels)
-        if setting == 'grad_reverse':
-            self.med_grad_reverse_classifier = AdversarialDiscriminator(config.hidden_size, n_cls=config.number_meds, reverse_grad=True)
-        elif setting == 'confuse':
-            self.med_grad_reverse_classifier = AdversarialDiscriminator(config.hidden_size, n_cls=config.number_meds, reverse_grad=False)
+        #self.classifier = nn.Linear(config.hidden_size, num_labels)
+        self.setting = setting
+        if self.setting == 'grad_reverse':
+            self.classifier = AdversarialDiscriminator(config.hidden_size, n_cls=self.num_labels, nlayers=1, reverse_grad=True)
+            self.med_grad_reverse_classifier = AdversarialDiscriminator(config.hidden_size, n_cls=config.number_meds, nlayers=1, reverse_grad=True)
+        elif self.setting == 'confuse':
+            self.classifier = AdversarialDiscriminator(config.hidden_size, n_cls=self.num_labels, nlayers=1, reverse_grad=False)
+            self.med_grad_reverse_classifier = AdversarialDiscriminator(config.hidden_size, n_cls=config.number_meds, nlayers=1, reverse_grad=False)
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, labs_ids, meds_ids, age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None, posi_ids=None, attention_mask=None, if_dab=False):
         _, pooled_output = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
                                      output_all_encoded_layers=False, if_include_meds=True)
         pooled_output = self.dropout(pooled_output)
+        self.classifier.reverse_grad = False
         logits = self.classifier(pooled_output)
         if if_dab:
+            if self.setting == 'grad_reverse':
+                self.classifier.reverse_grad = True
             _, pooled_output_no_meds = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
                                      output_all_encoded_layers=False, if_include_meds=False)
             pooled_output_no_meds = self.dropout(pooled_output_no_meds)
@@ -169,7 +175,6 @@ class BertForEHRPrediction(Bert.modeling.BertPreTrainedModel):
         else:
             logits_meds = logits
             logits_meds_pred = logits
-
         return logits, logits_meds, logits_meds_pred
 
 class BertConfig(Bert.modeling.BertConfig):

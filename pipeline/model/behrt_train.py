@@ -30,6 +30,7 @@ from behrt_model import *
 class train_behrt():
     def __init__(self,src, age, sex, ethni, ins, target_data, labs, meds, meds_labels, n_meds):
         df_split = pd.read_csv('/h/chloexq/los-prediction/pipeline/data/labels_split.csv')
+        #df_split = pd.read_csv('/h/chloexq/los-prediction/pipeline/data_random_5000/labels_split.csv')
         train_l = len(df_split[df_split['split']=='train'])
         val_l = len(df_split[df_split['split']=='val'])
         test_l = len(df_split[df_split['split']=='test'])
@@ -55,7 +56,7 @@ class train_behrt():
         }
 
         optim_param = {
-            'lr': 3e-5,
+            'lr': 1e-4,
             'warmup_proportion': 0.1,
             'weight_decay': 0.01
         }
@@ -119,7 +120,6 @@ class train_behrt():
                 meds_labels = meds_labels.to(device)
                 logits, logits_meds, logits_meds_pred = behrt(input_ids, labs_ids, meds_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
                                attention_mask=attMask, if_dab=if_dab)
-
                 #logits = behrt(input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids,
                 #               attention_mask=attMask)
 
@@ -127,22 +127,28 @@ class train_behrt():
                 loss = loss_fct(logits, labels)
                 loss_cls_tr += loss.item()
 
-                if if_dab and e > 4:
+                if if_dab: # and e > 4:
                     criterion_dab = nn.BCEWithLogitsLoss() #nn.KLDivLoss(reduction="batchmean")
                     #logits_meds = nn.functional.log_softmax(logits_meds, dim=1)
                     #meds_labels = nn.functional.softmax(meds_labels.float(), dim=1)
                     if setting == 'grad_reverse':
                         # TODO: Update grad_reverse re meds -> labels
                         loss_dab = criterion_dab(logits_meds, meds_labels.float())
+                        loss_dab_meds_pred = criterion_dab(logits_meds_pred, labels.float())
+                        
+                        loss_dab = loss_dab + loss_dab_meds_pred
                         assert behrt.med_grad_reverse_classifier.reverse_grad == True
+
                     elif setting == 'confuse':
                         confuse_labels = torch.ones_like(meds_labels).float()/meds_labels.shape[-1]
                         loss_dab = criterion_dab(logits_meds, confuse_labels)
 
                         confuse_labels_meds_pred = torch.ones_like(labels).float()/2.0
                         loss_dab_meds_pred = criterion_dab(logits_meds_pred, confuse_labels_meds_pred)
+                        
                         loss_dab = loss_dab + loss_dab_meds_pred
                         assert behrt.med_grad_reverse_classifier.reverse_grad == False
+
                     loss += dab_w*loss_dab
                     loss_dab_tr += dab_w*loss_dab.item() 
 
@@ -277,9 +283,9 @@ class train_behrt():
         val_data = {"code":val_code, "age":val_age, "labels":val_labels, "gender" : val_gender, "ethni" : val_ethni, "ins" : val_ins, "labs": val_labs, "meds": val_meds, "meds_labels": val_meds_labels, "n_meds": n_meds}
         test_data = {"code":test_code, "age":test_age, "labels":test_labels, "gender" : test_gender, "ethni" : test_ethni, "ins" : test_ins, "labs": test_labs, "meds": test_meds, "meds_labels": test_meds_labels, "n_meds": n_meds}
 
-        if_dab = False
+        if_dab = True
         dab_w = 1
-        setting = 'confuse'
+        setting = 'grad_reverse'
         assert setting in ['grad_reverse', 'confuse']
 
         conf = BertConfig(model_config)
@@ -292,8 +298,9 @@ class train_behrt():
         transformer_vars = [i for i in behrt.parameters()]
 
         #optimizer
-        optim_behrt = torch.optim.Adam(transformer_vars, lr=3e-5)
-
+        #optim_behrt = torch.optim.Adam(transformer_vars, lr=3e-5)
+        optim_behrt = torch.optim.Adam(transformer_vars, lr=optim_param['lr'])
+        
         TrainDset = DataLoader(train_data, max_len=train_params['max_len_seq'], code='code')
         trainload = torch.utils.data.DataLoader(dataset=TrainDset, batch_size=train_params['batch_size'], shuffle=True)
 
