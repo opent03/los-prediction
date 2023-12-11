@@ -12,10 +12,36 @@ import tqdm
 import importlib
 from pathlib import Path
 from grad_reverse import AdversarialDiscriminator
+from utils.filter_freq_util import filter_freq
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 
 #torch.manual_seed(42)
 #torch.backends.cudnn.deterministic = True
+class wave_act(nn.Module): 
+    def __init__(self, scale=True, in_shape=[], training = True): 
+        super(wave_act, self).__init__() 
+        self.cos_val = 1.75 # 5, 1.75
+        self.scale = scale
+        if(self.scale):
+            self.alpha = torch.nn.Parameter(torch.ones(in_shape))
+            self.beta = torch.nn.Parameter(torch.zeros(in_shape))
+            if training:
+                self.alpha.requires_grad = True
+                self.beta.requires_grad = True
+            else:
+                self.alpha.requires_grad = False
+                self.beta.requires_grad = False
+  
+    def forward(self, x): 
+        if self.scale:
+            z = (x-self.beta)/self.alpha
+        else:
+            z = x
+        return torch.cos(self.cos_val*z)*(torch.exp(-(z**2)/2))
+
+def calc_activation_shape(dim, ksize, dilation=1, stride=1, padding=0):
+    odim = dim + 2 * padding - dilation * (ksize - 1) - 1
+    return int((odim / stride) + 1)
 
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, segment, age
@@ -87,16 +113,109 @@ class BertEmbeddings(nn.Module):
 
 
 class BertModel(Bert.modeling.BertPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, conv_wavelet=False, training=True):
         super(BertModel, self).__init__(config)
         self.embeddings = BertEmbeddings(config=config)
         self.encoder = Bert.modeling.BertEncoder(config=config)
         self.pooler = Bert.modeling.BertPooler(config)
         self.apply(self.init_bert_weights)
+        self.conv_wavelet = conv_wavelet
+        if (self.conv_wavelet):
+            self.verbose = False
+            hidden_size = config.hidden_size #288
+            seq_len = 512 #2^9
+            self.conv_shape = 'seq_DFT' # 'over_f' 'over_t' 'seq_DFT'
+            if (self.conv_shape=='over_f'):
+                dec_layer = []
+                dec_layer.append(torch.nn.Conv1d(seq_len, seq_len//2, 1))
+                dec_layer.append(torch.nn.Tanh())
+                seq_len = seq_len//2
+                self.verbose = False
+                for i in range(4): #4, 2
+                    dec_layer.append(torch.nn.Conv1d(seq_len, seq_len//4, 1)) #4, 16
+                    if i>0:
+                        dec_layer.append(wave_act(in_shape=[1,1,hidden_size], training=training))
+                        #dec_layer.append(torch.nn.LayerNorm([seq_len//4, hidden_size]))
+                        dec_layer.append(torch.nn.Tanh())
+                    else:
+                        dec_layer.append(torch.nn.Tanh())
+                    seq_len = seq_len//4 #4, 16
+                self.dec_layer = nn.ModuleList(dec_layer)
+            elif (self.conv_shape=='over_t'):
+                dec_layer = []
+                """
+                n_dilation = 5
+                dilations = [2**i for i in range(n_dilation)]
+                #cout_size = [hidden_size, hidden_size*2, hidden_size, hidden_size//2, hidden_size//4, hidden_size//8, hidden_size//16, hidden_size//32, hidden_size//64, hidden_size//128]
+                cout_size = [hidden_size, hidden_size//2, hidden_size//4, hidden_size//8, hidden_size//16, hidden_size//32, hidden_size//64, hidden_size//128]
+                for i in range(n_dilation): #4, 2
+                    dec_layer.appe nd(torch.nn.Conv1d(cout_size[i], cout_size[i+1], 3, dilation=dilations[i], padding=2)) #4, 16
+                    dec_layer.append(torch.nn.Tanh())
+                self.dec_layer = nn.ModuleList(dec_layer)
+                self.dec_layer_dense = (torch.nn.Linear(9*470, hidden_size)) # 18*498(kernel=3) 18*505(kernel=2)
+                #"""
+                self.verbose = False
+                n_dilation = 5
+                dilations = [2**i for i in range(n_dilation)]
+                cout_size = [hidden_size]*(n_dilation+1)
+                for i in range(n_dilation): #4, 2
+                    dec_layer.append(torch.nn.Conv1d(cout_size[i], cout_size[i+1], 2, dilation=dilations[i], padding=1)) #4, 16
+                    #dec_layer.append(nn.MaxPool1d(2, stride=2)) #return_indices=True
+                    dec_layer.append(torch.nn.Tanh())
+                    dec_layer.append(torch.nn.Dropout(0.2))
+                dec_layer.append(nn.MaxPool1d(30, stride=30)) #20,19
+                self.dec_layer = nn.ModuleList(dec_layer)
+                self.dec_layer_dense = (torch.nn.Linear(288*16, hidden_size)) # 18*498(kernel=3) 18*505(kernel=2)
+            else:
+                # z = (x-a)/b
+                dec_layer1 = []
+                dec_layer2 = []
+                final_dec_layer = []
+                self.verbose = False
+                n_dilation = 6 #5
+                dilations = [2**i for i in range(n_dilation)]
+                cout_size = [hidden_size]*(n_dilation+1)
+                dim = seq_len//2
+                for i in range(n_dilation): #4, 2
+                    dec_layer1.append(torch.nn.Conv1d(cout_size[i], cout_size[i+1], 2, dilation=dilations[i], padding=1)) #4, 16
+                    #dec_layer.append(nn.MaxPool1d(2, stride=2)) #return_indices=True
+                    dim = calc_activation_shape(dim, 2, dilation=dilations[i], stride=1, padding=1)
+                    #print(dim, hidden_size)
+                    if i>1:
+                        dec_layer1.append(wave_act(in_shape=[1,hidden_size,1], training=training))
+                        #dec_layer1.append(torch.nn.LayerNorm([hidden_size, dim]))
+                        dec_layer1.append(torch.nn.Tanh())
+                    else:
+                        dec_layer1.append(torch.nn.Tanh())
+                    dec_layer1.append(torch.nn.Dropout(0.2))
+
+                    dec_layer2.append(torch.nn.Conv1d(cout_size[i], cout_size[i+1], 2, dilation=dilations[i], padding=1)) #4, 16
+                    #dec_layer.append(nn.MaxPool1d(2, stride=2)) #return_indices=True
+                    if i>1:
+                        dec_layer2.append(wave_act(in_shape=[1,hidden_size,1], training=training))
+                        #dec_layer2.append(torch.nn.LayerNorm([hidden_size, dim]))
+                        dec_layer2.append(torch.nn.Tanh())
+                    else:
+                        dec_layer2.append(torch.nn.Tanh())
+                    dec_layer2.append(torch.nn.Dropout(0.2))
+                self.dec_layer1 = nn.ModuleList(dec_layer1)
+                self.dec_layer2 = nn.ModuleList(dec_layer2)
+                final_dec_layer.append(torch.nn.Conv1d(cout_size[i], cout_size[i+1], 2, dilation=2**8, padding=1))
+                final_dec_layer.append(torch.nn.Tanh())
+                final_dec_layer.append(torch.nn.Dropout(0.2))
+                final_dec_layer.append(nn.MaxPool1d(20, stride=19)) #20,19
+                final_dec_layer.append(torch.nn.Linear(288*8, hidden_size))
+                self.final_dec_layer = nn.ModuleList(final_dec_layer)
+
+
+            ###causal version 
+            #self.conv1d = torch.nn.Conv1d(in_channels, out_channels, kernel_size, stride=1, padding=(kernel_size-1)*dilation, dilation=dilation)
 
     def forward(self, input_ids, labs_ids, age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None,
-                posi_ids=None, attention_mask=None,
-                output_all_encoded_layers=True, if_include_meds=False):
+                posi_ids=None, attention_mask=None, output_all_encoded_layers=True, 
+                if_include_meds=False, wave_vis=False, filt_freq=False, t_ind=None, as_ind=None, adv=False):
+        conv_output= None
+        wave_vec = []
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         if age_ids is None:
@@ -127,25 +246,102 @@ class BertModel(Bert.modeling.BertPreTrainedModel):
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
         embedding_output = self.embeddings(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, if_include_meds=if_include_meds)
+        
+        if filt_freq:
+            embedding_output = filter_freq(embedding_output, t_ind, as_ind=as_ind)
+        if wave_vis:
+            wave_vec.append(embedding_output)
+
         encoded_layers = self.encoder(embedding_output,
                                       extended_attention_mask,
                                       output_all_encoded_layers=output_all_encoded_layers)
         # encoded_layers is a list with a single item
         sequence_output = encoded_layers[-1]
         pooled_output = self.pooler(sequence_output)
+
         if not output_all_encoded_layers:
             encoded_layers = encoded_layers[-1]
-        return encoded_layers, pooled_output
+
+        if self.conv_wavelet and not adv:
+            if (self.conv_shape=='seq_DFT'):
+                sequence_output = sequence_output.transpose(1,2)
+                odd_seq = sequence_output[:,:,0::2]
+                even_seq = sequence_output[:,:,1::2]
+                for i, layer in enumerate(self.dec_layer1):
+                    if i==0:
+                        conv_output1 = layer(odd_seq)
+                        if wave_vis:
+                            wave_vec.append(conv_output1)
+                    else:
+                        conv_output1 = layer(conv_output1)
+                    if self.verbose:
+                        print('conv out shape: ', conv_output1.shape)
+                    #if( wave_vis and (i==11)):
+                    #    wave_vec.append(conv_output1)
+
+                for i, layer in enumerate(self.dec_layer2):
+                    if i==0:
+                        conv_output2 = layer(even_seq)
+                        if wave_vis:
+                            wave_vec.append(conv_output2)
+                    else:
+                        conv_output2 = layer(conv_output2)
+                    #if( wave_vis and (i==11)):
+                    #    wave_vec.append(conv_output2)
+                cat_out = torch.cat((conv_output1,conv_output2), 2)
+                if self.verbose:
+                    print('cat_out shape: ', cat_out.shape)
+                for i, layer in enumerate(self.final_dec_layer):
+                    if i==0:
+                        out = layer(cat_out)
+                        if wave_vis:
+                            wave_vec.append(cat_out)
+                            wave_vec.append(out)
+
+                    elif i==(len(self.final_dec_layer)-1):
+                        if self.verbose:
+                            print('dec_out shape: ', out.shape)
+                        out = out.reshape(out.shape[0], -1)
+                        conv_output = layer(out)
+                        conv_output = torch.nn.Tanh()(conv_output)
+                    else: 
+                        out = layer(out)
+            else:
+                if (self.conv_shape=='over_t'):
+                    sequence_output = sequence_output.transpose(1,2)
+                first_layer = True
+                for layer in self.dec_layer:
+                    if first_layer:
+                        conv_output = layer(sequence_output)
+                        first_layer = False
+                    else:
+                        conv_output = layer(conv_output)
+                    if wave_vis:
+                        wave_vec.append(conv_output)
+                    if self.verbose:
+                        print('conv out shape: ', conv_output.shape)
+                if (self.conv_shape=='over_f'):
+                    conv_output = conv_output.squeeze(1)
+                else:
+                    conv_output = conv_output.reshape(conv_output.shape[0], -1)
+                    conv_output = self.dec_layer_dense(conv_output)
+                    conv_output = torch.nn.Tanh()(conv_output)
+        else:
+            conv_output = pooled_output
+        if (wave_vis):
+            return conv_output, wave_vec
+        return encoded_layers, pooled_output, conv_output
 
 
 class BertForEHRPrediction(Bert.modeling.BertPreTrainedModel):
-    def __init__(self, config, num_labels, setting):
+    def __init__(self, config, num_labels, setting, conv_wavelet=True):
         super(BertForEHRPrediction, self).__init__(config)
         self.num_labels = num_labels
-        self.bert = BertModel(config)
+        self.bert = BertModel(config, conv_wavelet = conv_wavelet)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        #self.classifier = nn.Linear(config.hidden_size, num_labels)
+        self.classifier_conv = nn.Linear(config.hidden_size, num_labels)
         self.setting = setting
+        self.conv_wavelet = conv_wavelet
         if self.setting == 'grad_reverse':
             self.classifier = AdversarialDiscriminator(config.hidden_size, n_cls=self.num_labels, nlayers=1, reverse_grad=True)
             self.med_grad_reverse_classifier = AdversarialDiscriminator(config.hidden_size, n_cls=config.number_meds, nlayers=1, reverse_grad=True)
@@ -155,27 +351,39 @@ class BertForEHRPrediction(Bert.modeling.BertPreTrainedModel):
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, labs_ids, meds_ids, age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None, posi_ids=None, attention_mask=None, if_dab=False):
-        _, pooled_output = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
+        _, pooled_output, cn_out = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
                                      output_all_encoded_layers=False, if_include_meds=True)
         pooled_output = self.dropout(pooled_output)
         self.classifier.reverse_grad = False
         logits = self.classifier(pooled_output)
+        if (self.conv_wavelet):
+            logits_conv = self.classifier_conv(cn_out)
+            logits = (logits + logits_conv)/2
         if if_dab:
             if self.setting == 'grad_reverse':
                 self.classifier.reverse_grad = True
-            _, pooled_output_no_meds = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
-                                     output_all_encoded_layers=False, if_include_meds=False)
+            _, pooled_output_no_meds, _ = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
+                                     output_all_encoded_layers=False, if_include_meds=False, adv = True)
             pooled_output_no_meds = self.dropout(pooled_output_no_meds)
             logits_meds = self.med_grad_reverse_classifier(pooled_output_no_meds)
             
-            _, pooled_output_meds = self.bert(meds_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
-                                     output_all_encoded_layers=False, if_include_meds=True)
+            _, pooled_output_meds, _ = self.bert(meds_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, posi_ids, attention_mask,
+                                     output_all_encoded_layers=False, if_include_meds=True, adv = True)
             pooled_output_meds = self.dropout(pooled_output_meds)
             logits_meds_pred = self.classifier(pooled_output_meds)
         else:
             logits_meds = logits
             logits_meds_pred = logits
         return logits, logits_meds, logits_meds_pred
+
+def wave_test(self, input_ids, labs_ids,age_ids=None, gender_ids=None, ethni_ids=None, ins_ids=None, seg_ids=None, posi_ids=None, attention_mask=None, if_dab=False, filt_freq=False, t_ind=None, as_ind=None):
+        cn_out, wave_vec = self.bert(input_ids, labs_ids, age_ids, gender_ids, ethni_ids, ins_ids, seg_ids, 
+                             posi_ids,attention_mask,output_all_encoded_layers=False, 
+                             if_include_meds=True, wave_vis=True, filt_freq=filt_freq, t_ind=t_ind, as_ind=as_ind)
+        logits = self.classifier(cn_out)
+
+        return logits, wave_vec
+        
 
 class BertConfig(Bert.modeling.BertConfig):
     def __init__(self, config):

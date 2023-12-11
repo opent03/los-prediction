@@ -12,7 +12,12 @@ import sys
 
 import behrt_model
 from behrt_model import *
+import model.evaluation as evaluation
 
+from torchmetrics import AUROC
+from torchmetrics import AveragePrecision
+from torchmetrics import Precision
+from torchmetrics import Recall
 
 from pathlib import Path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
@@ -23,6 +28,7 @@ if not os.path.exists("./saved_models/checkpoint"):
 importlib.reload(behrt_model)
 import behrt_model
 from behrt_model import *
+import tqdm
 
 #torch.manual_seed(42)
 #torch.backends.cudnn.deterministic = True
@@ -56,7 +62,7 @@ class train_behrt():
         }
 
         optim_param = {
-            'lr': 1e-4,
+            'lr': 3e-5,
             'warmup_proportion': 0.1,
             'weight_decay': 0.01
         }
@@ -101,7 +107,9 @@ class train_behrt():
             start = time.time()
             behrt.train()
             print(if_dab, dab_w, setting)
-            for step, batch in enumerate(trainload):
+            step = 0
+            for batch in tqdm.tqdm(trainload):
+                step += 1
                 optim_behrt.zero_grad()
                 batch = tuple(t for t in batch)
                 input_ids, age_ids, gender_ids, ethni_ids, ins_ids, segment_ids, posi_ids, attMask, labels, labs_ids, meds_ids, meds_labels = batch
@@ -285,7 +293,7 @@ class train_behrt():
 
         if_dab = True
         dab_w = 1
-        setting = 'grad_reverse'
+        setting = 'confuse'
         assert setting in ['grad_reverse', 'confuse']
 
         conf = BertConfig(model_config)
