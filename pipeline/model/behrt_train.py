@@ -299,7 +299,6 @@ class train_behrt():
         conf = BertConfig(model_config)
     
         behrt = BertForEHRPrediction(conf, model_config['number_output'], setting)
-
         behrt = behrt.to(train_params['device'])
 
         #models parameters
